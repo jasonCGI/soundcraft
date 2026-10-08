@@ -28,7 +28,7 @@ impl Default for VoiceState {
             open: false,
             text: String::new(),
             voice: "af_heart".into(),
-            endpoint: "http://127.0.0.1:8800".into(),
+            endpoint: std::env::var("SOUNDCRAFT_AUDIOFORGE_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8800".into()),
             speed: 1.0,
             status: String::new(),
             job: None,

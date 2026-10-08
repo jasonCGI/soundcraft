@@ -15,6 +15,15 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: soundcraft-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            soundcraft-windows-${{ hashFiles('Cargo.lock') }}-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

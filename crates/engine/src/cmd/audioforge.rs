@@ -39,10 +39,12 @@ fn insert(e: &mut Engine, p: &Value) -> Result<Value> {
     if bytes.len() > 25 * 1024 * 1024 || !bytes.starts_with(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return Err(bad(id, "take must be a WAV no larger than 25 MB"));
     }
-    let result = crate::io::import_audio_bytes(e, "Voice take.wav", &bytes, None, target, at)?;
+    let absolute = std::fs::canonicalize(path).map_err(|err| EngineError::Io(err.to_string()))?;
+    let result = crate::io::import_audio_bytes(e, "Voice take.wav", &bytes, Some(&absolute.to_string_lossy()), target, at)?;
     if let Some(source_id) = result.get("source").and_then(Value::as_u64)
         && let Some(source) = e.session_mut().sources.iter_mut().find(|s| s.id == SourceId(source_id))
     {
+        source.name = format!("Voice take {}", source.id.0);
         source.generation = Some(Generation { provider: "audioforge-kokoro".into(), input: text.into(), voice: voice.into(), speed });
     }
     Ok(result)
@@ -77,5 +79,29 @@ mod tests {
         assert!(engine.session().sources.is_empty());
         assert!(engine.session().tracks.is_empty());
         std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn two_takes_save_as_distinct_audio_files() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let folder = std::env::temp_dir().join(format!("soundcraft-two-takes-{stamp}"));
+        std::fs::create_dir(&folder).unwrap();
+        let path = folder.join("input.wav");
+        let mut engine = Engine::default();
+        for (text, sample) in [("First", 0.1), ("Second", 0.2)] {
+            let buffer = soundcraft_audio_io::AudioBuffer { sample_rate: 24000, channels: vec![vec![sample; 240]] };
+            std::fs::write(&path, soundcraft_audio_io::encode(&buffer, &soundcraft_audio_io::EncodeOptions::default()).unwrap()).unwrap();
+            engine.execute("audioforge.insert", &serde_json::json!({"path":path,"input":text,"voice":"af_heart"})).unwrap();
+        }
+        crate::io::save_session(&mut engine, folder.join("session.scraft").to_str().unwrap()).unwrap();
+        let first = folder.join(&engine.session().sources[0].path);
+        let second = folder.join(&engine.session().sources[1].path);
+        assert_ne!(first, second);
+        assert_ne!(std::fs::read(&first).unwrap(), std::fs::read(&second).unwrap());
+        // Remove only files created by this test.
+        for item in [first, second, path, folder.join("session.scraft")] {
+            std::fs::remove_file(item).unwrap();
+        }
+        std::fs::remove_dir(folder.join("Audio Files")).unwrap();
+        std::fs::remove_dir(folder).unwrap();
     }
 }
