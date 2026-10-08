@@ -26,4 +26,9 @@ Native desktop only. No music generation, pronunciation dictionary, sentence rep
 
 ## Verification
 
-The bridge contract tests use a local synthetic WAV server. Engine tests are written for invalid requests, insertion, undo, and metadata serialization. They have not run: the local cached Rust compiler lacks the Windows linker. Three Python bridge tests pass, as do Rust formatting and whitespace checks. The official v0.3.0 CLI passed an import, save/reopen, and bounce smoke test with existing narration. Native playback and real TTS still require a tested local provider.
+Windows CI passed the native app build and complete `cargo xtask ci` gates, including formatting, strict workspace Clippy, workspace tests, asset and layer checks, and WASM checks. Three bridge tests and three engine regression tests cover input rejection, speech requests, insertion, undo, metadata round trips, and separate saved takes.
+
+The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz through the bridge. The official v0.3.0 CLI also passed import, save/reopen, and bounce checks. The built Windows preview passed real TTS through its native control channel, insertion, undo, metadata save, reopen, mix export, and screenshot capture. The screenshot was visually checked. Speaker playback and subjective voice quality still require a listening check.
+
+![Generate Voice panel with an inserted take](../images/audioforge-voice.png)
+

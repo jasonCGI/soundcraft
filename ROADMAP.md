@@ -4,6 +4,12 @@ SoundCraft is a clean-room, pure-Rust digital audio workstation that aims at ful
 Avid Pro Tools, and then beyond it: faster, open, scriptable and agent-controllable. This file is
 the honest status: what works today, what is missing, and how far we are.
 
+## Cardona Pipeline Tools voice preview (2026-10-08)
+
+The independent fork now includes local AudioForge/Kokoro speech generation, audition controls, undoable insertion, and saved generation metadata. The Windows build and full repository gates pass. A native smoke test passed real speech generation, insertion, undo, save/reopen, and mix export. See [setup and screenshot](docs/integrations/audioforge.md).
+
+Next: voice presets and take management, then an independently configured music-generation adapter. Listening validation remains open.
+
 ## Where we are (2026-10-07)
 
 | Measure | Value | How |
@@ -76,3 +82,4 @@ mutated and truncated movies.
 - **M9 (in progress):** AudioSuite breadth (done), Elastic Audio, Beat Detective.
 - **M10 (next):** alpha release on all platforms.
 - **M11 (mostly done):** third-party plugin hosting (CLAP, VST3, AU), video, surround.
+
