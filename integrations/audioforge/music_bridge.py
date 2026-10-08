@@ -28,6 +28,9 @@ def validate(settings, endpoint):
     bpm = settings.get('bpm', 100)
     seed = settings.get('seed', 42)
     model = settings.get('model', 'acestep-v15-turbo')
+    genre = settings.get('genre', 'Custom')
+    if not isinstance(genre,str) or not genre.strip() or len(genre) > 60:
+        raise ValueError('Use a genre label of 1 to 60 characters')
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 2000:
         raise ValueError('Enter between 1 and 2000 prompt characters')
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 10 <= duration <= 60:
@@ -38,7 +41,7 @@ def validate(settings, endpoint):
         raise ValueError('Seed must be a nonnegative 32-bit integer')
     if model != 'acestep-v15-turbo':
         raise ValueError('This preview supports the ACE-Step turbo model')
-    return dict(prompt=prompt, lyrics='[Instrumental]', audio_duration=duration, bpm=bpm,
+    return dict(prompt=prompt if genre == 'Custom' else genre + ', ' + prompt, lyrics='[Instrumental]', audio_duration=duration, bpm=bpm,
                 seed=seed, use_random_seed=False, model=model, thinking=False,
                 use_cot_caption=False, use_cot_language=False, use_cot_metas=False,
                 batch_size=1, inference_steps=8, audio_format='wav')

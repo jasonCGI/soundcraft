@@ -8,6 +8,17 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+// Original prompt templates, editable before generation.
+const MUSIC_PRESETS: &[(&str, &str, u32)] = &[
+    ("Ambient", "Gentle ambient instrumental, warm piano, evolving synth pads, spacious reverb, no vocals.", 72),
+    ("Lo-fi hip-hop", "Relaxed lo-fi instrumental, mellow electric piano, warm bass, laid-back dusty drum beat, no vocals.", 88),
+    ("Cinematic", "Uplifting cinematic instrumental, expressive strings, piano, warm brass, restrained percussion, no vocals.", 110),
+    ("Electronic", "Melodic electronic instrumental, bright synth arpeggios, deep bass, crisp dance drums, no vocals.", 124),
+    ("Acoustic folk", "Warm acoustic folk instrumental, fingerpicked guitar, gentle piano, light hand percussion, no vocals.", 90),
+    ("Jazz", "Mellow jazz instrumental trio, expressive piano, upright bass, brushed drums, relaxed swing, no vocals.", 100),
+    ("Rock", "Energetic melodic rock instrumental, layered electric guitars, driving bass, live drums, no vocals.", 120),
+];
+
 #[derive(Clone)]
 struct Take {
     name: String,
@@ -24,6 +35,7 @@ struct Preset {
 pub struct VoiceState {
     pub open: bool,
     music: bool,
+    genre: String,
     text: String,
     voice: String,
     endpoint: String,
@@ -73,6 +85,7 @@ impl VoiceState {
         Self {
             open: false,
             music,
+            genre: "Custom".into(),
             text: String::new(),
             voice: "af_heart".into(),
             endpoint: if music {
@@ -167,7 +180,7 @@ impl VoiceState {
         }
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         let settings = if self.music {
-            json!({"input":self.text,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo"})
+            json!({"input":self.text,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo","genre":self.genre})
         } else {
             json!({"input":self.text,"voice":self.voice,"speed":self.speed})
         };
@@ -286,7 +299,16 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
             ui.label(if music { "Local ACE-Step endpoint" } else { "Local AudioForge endpoint" });
             ui.text_edit_singleline(&mut state.endpoint);
             if music {
-                ui.label("ACE-Step turbo, instrumental");
+                egui::ComboBox::from_id_salt("music-genre").selected_text(&state.genre).show_ui(ui, |ui| {
+                    for &(name, prompt, bpm) in MUSIC_PRESETS {
+                        if ui.selectable_label(state.genre == name, name).clicked() {
+                            state.genre = name.into();
+                            state.text = prompt.into();
+                            state.bpm = bpm;
+                        }
+                    }
+                });
+                ui.label("ACE-Step turbo, instrumental. Add spoken vocals from Generate Voice on a separate track.");
                 ui.add(egui::Slider::new(&mut state.duration, 10.0..=60.0).text("Seconds"));
                 ui.add(egui::Slider::new(&mut state.bpm, 30..=300).text("BPM"));
                 ui.horizontal(|ui| {
@@ -424,6 +446,12 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             if music && p.get("model").is_some_and(|v| v.as_str() != Some("acestep-v15-turbo")) {
                 return Some(Err("This preview supports the ACE-Step turbo model".into()));
             }
+            if let Some(v) = p.get("genre").and_then(Value::as_str) {
+                if v.is_empty() || v.chars().count() > 60 {
+                    return Some(Err("Use a genre label of 1 to 60 characters".into()));
+                }
+                state.genre = v.into();
+            }
             if let Some(v) = p.get("input").and_then(Value::as_str) {
                 state.text = v.into();
             }
@@ -480,6 +508,18 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
         "take_export" => Some(state.export(p.get("path").and_then(Value::as_str).unwrap_or("")).map(|()| json!({"exported":true}))),
         "take_discard" => Some(state.discard().map(|()| json!({"discarded":true}))),
         "preset_save" if !music => Some(state.save_preset(p.get("name").and_then(Value::as_str).unwrap_or("")).map(|()| json!({"saved":true}))),
+        "preset_apply" if music => Some(
+            p.get("name")
+                .and_then(Value::as_str)
+                .and_then(|name| MUSIC_PRESETS.iter().find(|(label, _, _)| *label == name))
+                .ok_or_else(|| "Choose an existing music genre".to_string())
+                .map(|&(name, prompt, bpm)| {
+                    state.genre = name.into();
+                    state.text = prompt.into();
+                    state.bpm = bpm;
+                    json!({"genre":name,"input":prompt,"bpm":bpm})
+                }),
+        ),
         "preset_apply" if !music => Some(
             p.get("name")
                 .and_then(Value::as_str)

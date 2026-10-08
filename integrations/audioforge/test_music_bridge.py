@@ -81,6 +81,7 @@ class MusicTests(unittest.TestCase):
         for changed in [{'duration':float('nan')},{'duration':61},{'bpm':20},{'seed':-1},{'model':'other'},{'input':''}]:
             with self.assertRaises(ValueError):
                 validate(dict(input='Ambient', **{k:v for k,v in changed.items() if k != 'input'}) if 'input' not in changed else changed, 'http://127.0.0.1:8001')
+        self.assertEqual(validate({'input':'Warm piano','genre':'Ambient'}, 'http://127.0.0.1:8001')['prompt'],'Ambient, Warm piano')
         with self.assertRaises(ValueError):
             validate({'input':'Ambient'}, 'https://example.com')
 

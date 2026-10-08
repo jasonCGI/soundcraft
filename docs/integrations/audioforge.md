@@ -41,3 +41,9 @@ The adapter submits and polls one asynchronous task, then downloads a WAV only f
 Music commands: window.generate_music, musicforge.generate, musicforge.inspect, musicforge.cancel, and musicforge.insert. Both providers expose take_select (index), take_rename (name), take_export (path), and take_discard. Voice also exposes audioforge.preset_save and audioforge.preset_apply (name).
 
 Inserted music sources retain prompt, provider, model configuration name, requested duration, BPM, and seed. Exact model weight revisions are not exposed by this API and are not claimed; a seed alone does not promise identical results across engine versions. Generated music quality needs listening review.
+
+### Genres and spoken vocals
+
+The music panel offers original editable prompt presets for Ambient, Lo-fi hip-hop, Cinematic, Electronic, Acoustic folk, Jazz, and Rock. Choosing a preset fills its prompt and suggested BPM. The chosen genre accompanies the prompt sent to ACE-Step and is saved in source metadata. Automation uses musicforge.preset_apply with a name.
+
+For spoken vocals, generate a voice take in Generate Voice and insert it on a separate track over the music. Use the normal timeline, mixer, and mix export to arrange and balance them. Kokoro TTS produces speech, not sung pitch-controlled vocals. Singing, lyric alignment, stem generation, and automatic speech ducking remain future work.

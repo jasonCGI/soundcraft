@@ -22,6 +22,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
     ("musicforge.take_discard", "Take Discard", "", None),
     ("audioforge.preset_save", "Save Voice Preset", "", None),
     ("audioforge.preset_apply", "Apply Voice Preset", "", None),
+    ("musicforge.preset_apply", "Apply Music Genre", "", None),
     ("musicforge.generate", "Generate Music Take", "", None),
     ("musicforge.inspect", "Inspect Music Generation", "", None),
     ("musicforge.cancel", "Cancel Music Generation", "", None),

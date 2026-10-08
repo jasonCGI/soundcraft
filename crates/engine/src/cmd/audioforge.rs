@@ -72,6 +72,10 @@ fn insert_music(e: &mut Engine, p: &Value) -> Result<Value> {
     let duration = p.get("duration").and_then(Value::as_f64).unwrap_or(30.0);
     let bpm = p.get("bpm").and_then(Value::as_u64).unwrap_or(100);
     let seed = p.get("seed").and_then(Value::as_u64).unwrap_or(42);
+    let genre = str_param(p, "genre");
+    if genre.is_some_and(|v| v.is_empty() || v.chars().count() > 60) {
+        return Err(bad(id, "invalid genre label"));
+    }
     let model = str_param(p, "model").unwrap_or("acestep-v15-turbo");
     if prompt.trim().is_empty()
         || prompt.chars().count() > 2000
@@ -92,7 +96,7 @@ fn insert_music(e: &mut Engine, p: &Value) -> Result<Value> {
     {
         source.name = format!("Music take {}", source.id.0);
         source.generation = Some(Generation {
-            music: Some(MusicGeneration { model: model.into(), duration, bpm: bpm as u32, seed }),
+            music: Some(MusicGeneration { genre: genre.map(str::to_string), model: model.into(), duration, bpm: bpm as u32, seed }),
             provider: "ace-step-local".into(),
             input: prompt.into(),
             voice: String::new(),
@@ -152,7 +156,7 @@ mod tests {
         engine
             .execute(
                 "musicforge.insert",
-                &serde_json::json!({"path":path,"input":"Ambient instrumental","duration":20,"bpm":90,"seed":123,"at":48000}),
+                &serde_json::json!({"path":path,"input":"Ambient instrumental","duration":20,"bpm":90,"seed":123,"at":48000,"genre":"Ambient"}),
             )
             .unwrap();
         let saved = soundcraft_model::Session::from_json(&engine.session().to_json().unwrap()).unwrap();
@@ -161,6 +165,7 @@ mod tests {
         let settings = metadata.music.as_ref().unwrap();
         assert_eq!(settings.seed, 123);
         assert_eq!(settings.bpm, 90);
+        assert_eq!(settings.genre.as_deref(), Some("Ambient"));
         assert_eq!(settings.duration, 20.0);
         assert!(engine.undo());
         assert!(engine.session().sources.is_empty());
