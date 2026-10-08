@@ -538,10 +538,6 @@ pub fn run_ui_command(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<
 
 /// Parity including UI-layer commands.
 pub fn parity() -> Value {
-    #[cfg(not(target_arch = "wasm32"))]
-    if ui.button("Generate Voice").clicked() {
-        let _ = app.run("window.generate_voice", json!({}));
-    }
     let extra = ui_aliases();
     catalog::parity_with(&extra)
 }
