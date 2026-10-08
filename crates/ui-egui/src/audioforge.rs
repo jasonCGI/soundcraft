@@ -52,6 +52,11 @@ fn preset_path() -> Option<PathBuf> {
 }
 impl Default for VoiceState {
     fn default() -> Self {
+        Self::new(false)
+    }
+}
+impl VoiceState {
+    fn new(music: bool) -> Self {
         let mut presets = vec![
             Preset { name: "Warm narration".into(), voice: "af_heart".into(), speed: 1.0 },
             Preset { name: "Measured narration".into(), voice: "af_heart".into(), speed: 0.9 },
@@ -67,10 +72,14 @@ impl Default for VoiceState {
         }
         Self {
             open: false,
-            music: false,
+            music,
             text: String::new(),
             voice: "af_heart".into(),
-            endpoint: std::env::var("SOUNDCRAFT_AUDIOFORGE_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8800".into()),
+            endpoint: if music {
+                std::env::var("SOUNDCRAFT_MUSIC_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8001".into())
+            } else {
+                std::env::var("SOUNDCRAFT_AUDIOFORGE_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8800".into())
+            },
             speed: 1.0,
             duration: 30.0,
             bpm: 100,
@@ -100,11 +109,7 @@ fn valid_preset(p: &Preset) -> bool {
 }
 impl VoiceState {
     pub fn music() -> Self {
-        Self {
-            music: true,
-            endpoint: std::env::var("SOUNDCRAFT_MUSIC_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8001".into()),
-            ..Self::default()
-        }
+        Self::new(true)
     }
     fn take(&self) -> Option<&Take> {
         self.selected.and_then(|i| self.takes.get(i))

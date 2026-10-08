@@ -15,6 +15,7 @@ class MusicTests(unittest.TestCase):
             wav.setparams((2,2,48000,0,'NONE','not compressed'))
             wav.writeframes(b'\0' * 480)
         submitted = []
+        scenario = {"status":1,"file":"/v1/audio?path=test.wav","audio":audio.getvalue()}
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass
@@ -24,14 +25,14 @@ class MusicTests(unittest.TestCase):
                     submitted.append(body)
                     data = {'task_id':'test'}
                 else:
-                    data = [{'status':1, 'result':json.dumps([{'file':'/v1/audio?path=test.wav'}])}]
+                    data = [{'status':scenario['status'], 'result':json.dumps([{'file':scenario['file']}])}]
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(json.dumps({'code':200,'data':data}).encode())
             def do_GET(self):
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(audio.getvalue())
+                self.wfile.write(scenario['audio'])
         server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
@@ -46,6 +47,17 @@ class MusicTests(unittest.TestCase):
                 self.assertFalse(submitted[0]['thinking'])
                 with self.assertRaises(FileExistsError):
                     generate(settings, f'http://127.0.0.1:{server.server_port}', path)
+                for field, value in [('file','https://example.com/audio.wav'),('file','http://127.0.0.1:9/v1/audio?path=x'),('status',2),('audio',b'not audio')]:
+                    original = scenario[field]
+                    scenario[field] = value
+                    rejected = Path(folder)/'rejected.wav'
+                    with self.assertRaises((ValueError,wave.Error,EOFError)):
+                        generate(settings, f'http://127.0.0.1:{server.server_port}', rejected)
+                    self.assertFalse(rejected.exists())
+                    scenario[field] = original
+                scenario['status'] = 0
+                with self.assertRaises(TimeoutError):
+                    generate(settings, f'http://127.0.0.1:{server.server_port}', Path(folder)/'timeout.wav',timeout=0.02,poll_interval=0.01)
         finally:
             server.shutdown()
             server.server_close()
