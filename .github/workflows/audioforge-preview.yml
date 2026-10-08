@@ -48,3 +48,11 @@ jobs:
             target/debug/soundcraft.exe
             target/debug/soundcraft-cli.exe
             integrations/audioforge/bridge.py
+      - uses: actions/cache/save@v4
+        if: always() && !cancelled()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: soundcraft-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
