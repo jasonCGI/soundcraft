@@ -36,14 +36,14 @@ The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz throug
 
 The music panel targets the official ACE-Step 1.5 local API at http://127.0.0.1:8001. Set SOUNDCRAFT_MUSIC_BRIDGE to the absolute path of integrations/audioforge/music_bridge.py, and optionally SOUNDCRAFT_MUSIC_ENDPOINT. The Python executable setting is shared with the voice bridge. Install and start ACE-Step separately using its [official setup](https://github.com/ACE-Step/ACE-Step-1.5).
 
-The adapter submits and polls one asynchronous task, then downloads a WAV only from the same local service. Prompts are limited to 2000 characters, durations to 10 to 60 seconds, and audio to 25 MB. The preview uses the 2B turbo model with eight inference steps, a fixed seed, instrumental lyrics, and no optional LM. No paid service or Railway deployment is used.
+The adapter submits and polls one asynchronous task, then downloads a WAV only from the same local service. Prompts are limited to 2000 characters, durations to 10 to 60 seconds, and audio to 25 MB. The preview uses the 2B turbo model with eight inference steps, a fixed seed, and no optional LM. Instrumental mode uses the instrumental tag; sung-vocal mode sends your English lyrics, up to 3000 characters. No paid service or Railway deployment is used.
 
 Music commands: window.generate_music, musicforge.generate, musicforge.inspect, musicforge.cancel, and musicforge.insert. Both providers expose take_select (index), take_rename (name), take_export (path), and take_discard. Voice also exposes audioforge.preset_save and audioforge.preset_apply (name).
 
-Inserted music sources retain prompt, provider, model configuration name, requested duration, BPM, and seed. Exact model weight revisions are not exposed by this API and are not claimed; a seed alone does not promise identical results across engine versions. Generated music quality needs listening review.
+Inserted music sources retain prompt, provider, model configuration name, requested duration, BPM, seed, genre, and supplied lyrics. Exact model weight revisions are not exposed by this API and are not claimed; a seed alone does not promise identical results across engine versions. Generated music quality needs listening review.
 
 ### Genres and spoken vocals
 
 The music panel offers original editable prompt presets for Ambient, Lo-fi hip-hop, Cinematic, Electronic, Acoustic folk, Jazz, and Rock. Choosing a preset fills its prompt and suggested BPM. The chosen genre accompanies the prompt sent to ACE-Step and is saved in source metadata. Automation uses musicforge.preset_apply with a name.
 
-For spoken vocals, generate a voice take in Generate Voice and insert it on a separate track over the music. Use the normal timeline, mixer, and mix export to arrange and balance them. Kokoro TTS produces speech, not sung pitch-controlled vocals. Singing, lyric alignment, stem generation, and automatic speech ducking remain future work.
+For spoken vocals, generate a voice take in Generate Voice and insert it on a separate track over the music. Use the normal timeline, mixer, and mix export to arrange and balance them. Kokoro TTS produces speech, not sung pitch-controlled vocals. Enable Sung vocals in Generate Music to use ACE-Step for singing with English lyrics. Describe the voice character in the prompt. The generated song is one mixed take; independent vocal stems, precise lyric alignment, chosen TTS voice identity for singing, and automatic speech ducking remain future work.

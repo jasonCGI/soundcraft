@@ -72,6 +72,15 @@ fn insert_music(e: &mut Engine, p: &Value) -> Result<Value> {
     let duration = p.get("duration").and_then(Value::as_f64).unwrap_or(30.0);
     let bpm = p.get("bpm").and_then(Value::as_u64).unwrap_or(100);
     let seed = p.get("seed").and_then(Value::as_u64).unwrap_or(42);
+    for field in ["lyrics", "genre", "model"] {
+        if p.get(field).is_some_and(|v| v.as_str().is_none()) {
+            return Err(bad(id, "invalid text music setting"));
+        }
+    }
+    let lyrics = str_param(p, "lyrics").unwrap_or("[Instrumental]");
+    if lyrics.trim().is_empty() || lyrics.chars().count() > 3000 {
+        return Err(bad(id, "invalid lyrics"));
+    }
     let genre = str_param(p, "genre");
     if genre.is_some_and(|v| v.is_empty() || v.chars().count() > 60) {
         return Err(bad(id, "invalid genre label"));
@@ -96,7 +105,14 @@ fn insert_music(e: &mut Engine, p: &Value) -> Result<Value> {
     {
         source.name = format!("Music take {}", source.id.0);
         source.generation = Some(Generation {
-            music: Some(MusicGeneration { genre: genre.map(str::to_string), model: model.into(), duration, bpm: bpm as u32, seed }),
+            music: Some(MusicGeneration {
+                lyrics: (lyrics != "[Instrumental]").then(|| lyrics.to_string()),
+                genre: genre.map(str::to_string),
+                model: model.into(),
+                duration,
+                bpm: bpm as u32,
+                seed,
+            }),
             provider: "ace-step-local".into(),
             input: prompt.into(),
             voice: String::new(),
@@ -156,7 +172,7 @@ mod tests {
         engine
             .execute(
                 "musicforge.insert",
-                &serde_json::json!({"path":path,"input":"Ambient instrumental","duration":20,"bpm":90,"seed":123,"at":48000,"genre":"Ambient"}),
+                &serde_json::json!({"path":path,"input":"Ambient instrumental","duration":20,"bpm":90,"seed":123,"at":48000,"genre":"Ambient","lyrics":"[Verse]\nAn original line"}),
             )
             .unwrap();
         let saved = soundcraft_model::Session::from_json(&engine.session().to_json().unwrap()).unwrap();
@@ -166,6 +182,7 @@ mod tests {
         assert_eq!(settings.seed, 123);
         assert_eq!(settings.bpm, 90);
         assert_eq!(settings.genre.as_deref(), Some("Ambient"));
+        assert_eq!(settings.lyrics.as_deref(), Some("[Verse]\nAn original line"));
         assert_eq!(settings.duration, 20.0);
         assert!(engine.undo());
         assert!(engine.session().sources.is_empty());

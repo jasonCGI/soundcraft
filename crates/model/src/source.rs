@@ -128,6 +128,8 @@ pub struct Generation {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MusicGeneration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyrics: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genre: Option<String>,
     pub model: String,
     pub duration: f64,

@@ -10,13 +10,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Original prompt templates, editable before generation.
 const MUSIC_PRESETS: &[(&str, &str, u32)] = &[
-    ("Ambient", "Gentle ambient instrumental, warm piano, evolving synth pads, spacious reverb, no vocals.", 72),
-    ("Lo-fi hip-hop", "Relaxed lo-fi instrumental, mellow electric piano, warm bass, laid-back dusty drum beat, no vocals.", 88),
-    ("Cinematic", "Uplifting cinematic instrumental, expressive strings, piano, warm brass, restrained percussion, no vocals.", 110),
-    ("Electronic", "Melodic electronic instrumental, bright synth arpeggios, deep bass, crisp dance drums, no vocals.", 124),
-    ("Acoustic folk", "Warm acoustic folk instrumental, fingerpicked guitar, gentle piano, light hand percussion, no vocals.", 90),
-    ("Jazz", "Mellow jazz instrumental trio, expressive piano, upright bass, brushed drums, relaxed swing, no vocals.", 100),
-    ("Rock", "Energetic melodic rock instrumental, layered electric guitars, driving bass, live drums, no vocals.", 120),
+    ("Ambient", "Gentle ambient music, warm piano, evolving synth pads, spacious reverb.", 72),
+    ("Lo-fi hip-hop", "Relaxed lo-fi music, mellow electric piano, warm bass, laid-back dusty drum beat.", 88),
+    ("Cinematic", "Uplifting cinematic music, expressive strings, piano, warm brass, restrained percussion.", 110),
+    ("Electronic", "Melodic electronic music, bright synth arpeggios, deep bass, crisp dance drums.", 124),
+    ("Acoustic folk", "Warm acoustic folk music, fingerpicked guitar, gentle piano, light hand percussion.", 90),
+    ("Jazz", "Mellow jazz instrumental trio, expressive piano, upright bass, brushed drums, relaxed swing.", 100),
+    ("Rock", "Energetic melodic rock music, layered electric guitars, driving bass, live drums.", 120),
 ];
 
 #[derive(Clone)]
@@ -36,6 +36,8 @@ pub struct VoiceState {
     pub open: bool,
     music: bool,
     genre: String,
+    vocals: bool,
+    lyrics: String,
     text: String,
     voice: String,
     endpoint: String,
@@ -86,6 +88,8 @@ impl VoiceState {
             open: false,
             music,
             genre: "Custom".into(),
+            vocals: false,
+            lyrics: String::new(),
             text: String::new(),
             voice: "af_heart".into(),
             endpoint: if music {
@@ -156,6 +160,9 @@ impl VoiceState {
         {
             return Err("Use 10 to 60 seconds, 30 to 300 BPM, and a nonnegative 32-bit seed".into());
         }
+        if self.music && self.vocals && (self.lyrics.trim().is_empty() || self.lyrics.chars().count() > 3000) {
+            return Err("Enter between 1 and 3000 lyric characters for sung vocals".into());
+        }
         let python = std::env::var("SOUNDCRAFT_AUDIOFORGE_PYTHON").map_err(|_| "Set SOUNDCRAFT_AUDIOFORGE_PYTHON to your Python executable")?;
         let bridge_var = if self.music { "SOUNDCRAFT_MUSIC_BRIDGE" } else { "SOUNDCRAFT_AUDIOFORGE_BRIDGE" };
         let bridge = std::env::var(bridge_var).map_err(|_| format!("Set {bridge_var} to the generation bridge"))?;
@@ -180,7 +187,7 @@ impl VoiceState {
         }
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         let settings = if self.music {
-            json!({"input":self.text,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo","genre":self.genre})
+            json!({"input":self.text,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo","genre":self.genre,"lyrics":if self.vocals { self.lyrics.as_str() } else { "[Instrumental]" }})
         } else {
             json!({"input":self.text,"voice":self.voice,"speed":self.speed})
         };
@@ -308,7 +315,12 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                         }
                     }
                 });
-                ui.label("ACE-Step turbo, instrumental. Add spoken vocals from Generate Voice on a separate track.");
+                ui.checkbox(&mut state.vocals, "Sung vocals (ACE-Step)");
+                if state.vocals {
+                    ui.label("English lyrics, up to 3000 characters. Describe the singing voice in the music prompt.");
+                    ui.add(egui::TextEdit::multiline(&mut state.lyrics).desired_rows(5).desired_width(f32::INFINITY).char_limit(3000));
+                }
+                ui.label("Use Generate Voice for spoken vocals on a separate track.");
                 ui.add(egui::Slider::new(&mut state.duration, 10.0..=60.0).text("Seconds"));
                 ui.add(egui::Slider::new(&mut state.bpm, 30..=300).text("BPM"));
                 ui.horizontal(|ui| {
@@ -445,6 +457,10 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             }
             if music && p.get("model").is_some_and(|v| v.as_str() != Some("acestep-v15-turbo")) {
                 return Some(Err("This preview supports the ACE-Step turbo model".into()));
+            }
+            if let Some(v) = p.get("lyrics").and_then(Value::as_str) {
+                state.vocals = v != "[Instrumental]";
+                state.lyrics = v.into();
             }
             if let Some(v) = p.get("genre").and_then(Value::as_str) {
                 if v.is_empty() || v.chars().count() > 60 {

@@ -12,7 +12,7 @@ See [setup and current limits](docs/integrations/audioforge.md). The small Pytho
 
 The upstream Rust workspace and command architecture remain intact. Run `cargo xtask ci` for repository checks. The AudioForge preview workflow builds and checks the Windows version. Native verification is in progress; this is not a production release.
 
-The next preview adds voice presets, take selection/rename/export/discard, and a local ACE-Step instrumental adapter. Its build and native verification are in progress. Sentence-level regeneration remains planned.
+The next preview adds voice presets, take selection/rename/export/discard, and a local ACE-Step adapter with genre presets and optional sung vocals. Its build and native verification are in progress. Sentence-level regeneration remains planned.
 
 ## Attribution and licenses
 
