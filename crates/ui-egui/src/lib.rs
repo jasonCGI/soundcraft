@@ -191,6 +191,8 @@ pub enum Gesture {
 pub struct SoundApp {
     #[cfg(not(target_arch = "wasm32"))]
     pub voice: audioforge::VoiceState,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub music: audioforge::VoiceState,
     pub engine: Engine,
     pub player: Option<Player>,
     /// Input capture, opened on first record.
@@ -241,6 +243,8 @@ impl SoundApp {
         SoundApp {
             #[cfg(not(target_arch = "wasm32"))]
             voice: audioforge::VoiceState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            music: audioforge::VoiceState::music(),
             engine,
             player,
             recorder: None,

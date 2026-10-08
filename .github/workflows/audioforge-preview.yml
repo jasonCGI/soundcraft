@@ -51,6 +51,7 @@ jobs:
             target/debug/soundcraft.exe
             target/debug/soundcraft-cli.exe
             integrations/audioforge/bridge.py
+            integrations/audioforge/music_bridge.py
       - uses: actions/cache/save@v4
         if: always() && !cancelled()
         with:

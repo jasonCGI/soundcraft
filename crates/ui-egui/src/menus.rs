@@ -11,6 +11,20 @@ pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
     ("audioforge.generate", "Generate Voice Take", "", None),
     ("audioforge.cancel", "Cancel Voice Generation", "", None),
     ("audioforge.inspect", "Inspect Voice Generation", "", None),
+    ("window.generate_music", "Generate Music", "", None),
+    ("audioforge.take_select", "Take Select", "", None),
+    ("audioforge.take_rename", "Take Rename", "", None),
+    ("audioforge.take_export", "Take Export", "", None),
+    ("audioforge.take_discard", "Take Discard", "", None),
+    ("musicforge.take_select", "Take Select", "", None),
+    ("musicforge.take_rename", "Take Rename", "", None),
+    ("musicforge.take_export", "Take Export", "", None),
+    ("musicforge.take_discard", "Take Discard", "", None),
+    ("audioforge.preset_save", "Save Voice Preset", "", None),
+    ("audioforge.preset_apply", "Apply Voice Preset", "", None),
+    ("musicforge.generate", "Generate Music Take", "", None),
+    ("musicforge.inspect", "Inspect Music Generation", "", None),
+    ("musicforge.cancel", "Cancel Music Generation", "", None),
     ("window.mix", "Mix", "Window > Mix", Some("Cmd+=")),
     ("window.edit", "Edit", "Window > Edit", Some("Cmd+=")),
     ("window.toggle_mix_edit", "Toggle Mix/Edit", "", Some("Cmd+=")),
@@ -201,6 +215,10 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                         let _ = app.run("app.quit", json!({}));
                     }
                 });
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Generate Music").clicked() {
+                    let _ = app.run("window.generate_music", json!({}));
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("Generate Voice").clicked() {
                     let _ = app.run("window.generate_voice", json!({}));

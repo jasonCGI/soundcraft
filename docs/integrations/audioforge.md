@@ -22,12 +22,22 @@ Inserted sources store the provider, source text, voice, and speed. Provider mod
 
 ## Current limits
 
-Native desktop only. No music generation, pronunciation dictionary, sentence replacement, take browser, automatic startup, or approval workflow yet. Audition uses a separate playback instance and is disabled while the session transport is running. Check the build and listening results before using the preview for production.
+Native desktop only. The next preview includes three original voice-setting presets, up to 20 saved custom presets, and an eight-take list with selection, renaming, WAV export, and discard. Takes last until the app closes; insert and save a session or export a WAV to retain them. No pronunciation dictionary, sentence replacement, automatic engine startup, or approval workflow yet. Audition uses a separate playback instance and is disabled while the session transport is running. Check the build and listening results before using the preview for production.
 
 ## Verification
 
 Windows CI passed the native app build and complete `cargo xtask ci` gates, including formatting, strict workspace Clippy, workspace tests, asset and layer checks, and WASM checks. Three bridge tests and three engine regression tests cover input rejection, speech requests, insertion, undo, metadata round trips, and separate saved takes.
 
-The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz through the bridge. The official v0.3.0 CLI also passed import, save/reopen, and bounce checks. The built Windows preview passed real TTS through its native control channel, insertion, undo, metadata save, reopen, mix export, and screenshot capture. The screenshot was visually checked. Speaker playback and subjective voice quality still require a listening check.
+The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz through the bridge. The official v0.3.0 CLI also passed import, save/reopen, and bounce checks. The built Windows preview passed real TTS through its native control channel, insertion, undo, metadata save, reopen, mix export, and screenshot capture. The screenshot was visually checked. Jason listened to the emailed Kokoro sample and approved its sound on 2026-10-08. Native audition playback has not yet been separately verified.
 
 ![Generate Voice panel with an inserted take](../images/audioforge-voice.png)
+
+## Instrumental music preview
+
+The music panel targets the official ACE-Step 1.5 local API at http://127.0.0.1:8001. Set SOUNDCRAFT_MUSIC_BRIDGE to the absolute path of integrations/audioforge/music_bridge.py, and optionally SOUNDCRAFT_MUSIC_ENDPOINT. The Python executable setting is shared with the voice bridge. Install and start ACE-Step separately using its [official setup](https://github.com/ACE-Step/ACE-Step-1.5).
+
+The adapter submits and polls one asynchronous task, then downloads a WAV only from the same local service. Prompts are limited to 2000 characters, durations to 10 to 60 seconds, and audio to 25 MB. The preview uses the 2B turbo model with eight inference steps, a fixed seed, instrumental lyrics, and no optional LM. No paid service or Railway deployment is used.
+
+Music commands: window.generate_music, musicforge.generate, musicforge.inspect, musicforge.cancel, and musicforge.insert. Both providers expose take_select (index), take_rename (name), take_export (path), and take_discard. Voice also exposes audioforge.preset_save and audioforge.preset_apply (name).
+
+Inserted music sources retain prompt, provider, model configuration name, requested duration, BPM, and seed. Exact model weight revisions are not exposed by this API and are not claimed; a seed alone does not promise identical results across engine versions. Generated music quality needs listening review.
