@@ -21,6 +21,7 @@ pub fn add_source(s: &mut Session, name: &str, mut buf: AudioBuffer, path: Optio
     let id = SourceId(s.alloc());
     let stem = Path::new(name).file_stem().and_then(|x| x.to_str()).unwrap_or(name).to_string();
     s.sources.push(Source {
+        generation: None,
         id,
         name: stem.clone(),
         path: path.map_or_else(|| format!("Audio Files/{stem}.wav"), str::to_string),

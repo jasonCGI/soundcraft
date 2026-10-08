@@ -28,7 +28,7 @@ impl eframe::App for App {
         if self.0.quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        let title = format!("{} — SoundCraft", self.0.engine.session().name);
+        let title = format!("{}: Cardona Pipeline Tools SoundCraft Preview", self.0.engine.session().name);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -158,7 +158,7 @@ fn main() -> eframe::Result {
     let engine = if demo { soundcraft_engine::demo::demo_engine() } else { Engine::default() };
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("SoundCraft")
+            .with_title("Cardona Pipeline Tools SoundCraft Preview")
             .with_inner_size([1600.0, 1000.0])
             .with_min_inner_size([960.0, 600.0])
             .with_drag_and_drop(true)
