@@ -31,4 +31,3 @@ Windows CI passed the native app build and complete `cargo xtask ci` gates, incl
 The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz through the bridge. The official v0.3.0 CLI also passed import, save/reopen, and bounce checks. The built Windows preview passed real TTS through its native control channel, insertion, undo, metadata save, reopen, mix export, and screenshot capture. The screenshot was visually checked. Speaker playback and subjective voice quality still require a listening check.
 
 ![Generate Voice panel with an inserted take](../images/audioforge-voice.png)
-

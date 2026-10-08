@@ -82,4 +82,3 @@ mutated and truncated movies.
 - **M9 (in progress):** AudioSuite breadth (done), Elastic Audio, Beat Detective.
 - **M10 (next):** alpha release on all platforms.
 - **M11 (mostly done):** third-party plugin hosting (CLAP, VST3, AU), video, surround.
-
