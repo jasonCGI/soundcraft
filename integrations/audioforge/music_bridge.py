@@ -1,5 +1,7 @@
 """Local ACE-Step music bridge, using the documented asynchronous API."""
 import argparse
+import array
+import struct
 import io
 import json
 import math
@@ -40,6 +42,48 @@ def validate(settings, endpoint):
                 seed=seed, use_random_seed=False, model=model, thinking=False,
                 use_cot_caption=False, use_cot_language=False, use_cot_metas=False,
                 batch_size=1, inference_steps=8, audio_format='wav')
+
+def normalize_audio(audio):
+    """ACE-Step writes float WAVs; convert finite float32 samples to PCM16."""
+    if len(audio) < 12 or audio[:4] != b'RIFF' or audio[8:12] != b'WAVE':
+        raise ValueError('ACE-Step returned an invalid WAV')
+    declared = struct.unpack_from('<I', audio, 4)[0] + 8
+    if declared > len(audio):
+        raise ValueError('ACE-Step returned truncated audio')
+    fmt = None
+    samples = None
+    offset = 12
+    while offset + 8 <= declared:
+        kind = audio[offset:offset+4]
+        size = struct.unpack_from('<I', audio, offset+4)[0]
+        start = offset + 8
+        end = start + size
+        if end > declared:
+            raise ValueError('ACE-Step returned a truncated WAV chunk')
+        if kind == b'fmt ':
+            fmt = audio[start:end]
+        elif kind == b'data':
+            samples = audio[start:end]
+        offset = end + (size % 2)
+    if fmt is None or len(fmt) < 16 or samples is None:
+        raise ValueError('ACE-Step returned an incomplete WAV')
+    encoding, channels, rate, _, alignment, bits = struct.unpack_from('<HHIIHH', fmt)
+    if encoding != 3:
+        return audio
+    if channels not in (1,2) or not 8000 <= rate <= 192000 or bits != 32 or alignment != channels * 4 or len(samples) % alignment or not samples or len(samples) / alignment / rate > 65:
+        raise ValueError('ACE-Step returned unsupported float audio')
+    pcm = array.array('h')
+    for (sample,) in struct.iter_unpack('<f', samples):
+        if not math.isfinite(sample):
+            raise ValueError('ACE-Step returned nonfinite audio samples')
+        pcm.append(round(max(-1.0,min(1.0,sample)) * 32767))
+    if sys.byteorder != 'little':
+        pcm.byteswap()
+    output = io.BytesIO()
+    with wave.open(output,'wb') as wav:
+        wav.setparams((channels,2,rate,0,'NONE','not compressed'))
+        wav.writeframes(pcm.tobytes())
+    return output.getvalue()
 
 def generate(settings, endpoint, output, *, timeout=600, poll_interval=1):
     payload = validate(settings, endpoint)
@@ -82,7 +126,7 @@ def generate(settings, endpoint, output, *, timeout=600, poll_interval=1):
             expected = urllib.parse.urlsplit(base)
             if (address.scheme, address.hostname, address.port) != (expected.scheme, expected.hostname, expected.port) or address.username or address.password or address.path != '/v1/audio' or address.fragment:
                 raise ValueError('ACE-Step audio must come from the same local service')
-            audio = request('/v1/audio?' + address.query, limit=MAX_AUDIO)
+            audio = normalize_audio(request('/v1/audio?' + address.query, limit=MAX_AUDIO))
             with wave.open(io.BytesIO(audio), 'rb') as wav:
                 frames = wav.getnframes()
                 if frames == 0 or wav.getnchannels() not in (1,2) or wav.getframerate() <= 0 or frames / wav.getframerate() > 65:

@@ -1,12 +1,13 @@
 import io
 import json
 import tempfile
+import struct
 import threading
 import unittest
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from music_bridge import generate, validate
+from music_bridge import generate, validate, normalize_audio
 
 class MusicTests(unittest.TestCase):
     def test_async_contract_download_and_no_overwrite(self):
@@ -62,6 +63,20 @@ class MusicTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
+    def test_float_wav_conversion_and_rejection(self):
+        def floating(values):
+            samples=struct.pack('<'+'f'*len(values),*values)
+            fmt=struct.pack('<HHIIHH',3,1,48000,192000,4,32)
+            chunks=b'fmt '+struct.pack('<I',len(fmt))+fmt+b'data'+struct.pack('<I',len(samples))+samples
+            return b'RIFF'+struct.pack('<I',4+len(chunks))+b'WAVE'+chunks
+        converted=normalize_audio(floating([0.0,0.5,-0.5,2.0]))
+        with wave.open(io.BytesIO(converted),'rb') as wav:
+            self.assertEqual(wav.getsampwidth(),2)
+            self.assertEqual(struct.unpack('<hhhh',wav.readframes(4)),(0,16384,-16384,32767))
+        with self.assertRaises(ValueError):
+            normalize_audio(floating([float('nan')]))
+        with self.assertRaises(ValueError):
+            normalize_audio(floating([0.1])[:-1])
     def test_invalid_settings_before_network(self):
         for changed in [{'duration':float('nan')},{'duration':61},{'bpm':20},{'seed':-1},{'model':'other'},{'input':''}]:
             with self.assertRaises(ValueError):
