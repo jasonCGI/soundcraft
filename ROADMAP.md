@@ -18,6 +18,12 @@ Implemented: immutable session lyric revisions with vocal roles and excerpt sele
 
 Verified with workspace CI, Python bridge tests, a real 40-second separation, and a native generation-to-remix/export/reopen smoke test. See the [workflow guide](docs/integrations/remix-workflow.md) for screenshots and limits. Separate singers, individual guitars, sample-synchronized A/B switching, loudness matching and coordinated per-instrument generation remain future work.
 
+## Songwriting assistant (2026-10-09)
+
+Implemented: a project-local SoundCraft Songwriting agent skill for new songs, revisions, audits and generator packages; an original dependency-free lyric analyzer; and a native Analyze Lyrics control shared by the UI and control channel. Reports identify sections and vocal cues, estimate English syllables and spelling-based rhyme groups, flag line-length outliers, and surface exact repeated lines. Edited lyrics visibly mark the previous report as stale.
+
+The skill and twelve audio-integration tests pass, the Rust UI compiles, and the panel was rendered and visually checked. See the [songwriting assistant guide](docs/integrations/songwriting-assistant.md). Phonetic rhymes, stress-aware meter, suggestion ranking, melody-aware prosody, and lyric-to-audio timestamps remain future work.
+
 ## Where we are (2026-10-07)
 
 | Measure | Value | How |

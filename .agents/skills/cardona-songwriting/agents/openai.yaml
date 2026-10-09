@@ -1,0 +1,4 @@
+interface:
+  display_name: "SoundCraft Songwriting"
+  short_description: "Write and audit original SoundCraft songs"
+  default_prompt: "Create an original, singable SoundCraft song package with a clear hook, structured lyrics, vocal roles, and a concise production prompt."

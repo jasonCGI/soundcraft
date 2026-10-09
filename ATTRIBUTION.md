@@ -52,6 +52,7 @@ The screenshot docs/images/audioforge-voice.png shows the Cardona Pipeline Tools
 | `docs/images/audioforge-voice.png` | Jason Cardona | Screenshot of this fork with an original local test script | MIT OR Apache-2.0 |
 | `docs/images/audioforge-music.png` | Jason Cardona | Screenshot of this fork with original generated test audio | MIT OR Apache-2.0 |
 | `docs/images/audioforge-singing.png` | Jason Cardona | Screenshot of this fork with original lyrics and generated test audio | MIT OR Apache-2.0 |
+| `docs/images/songwriting-assistant.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original test lyrics and synthesised demo session | MIT OR Apache-2.0 |
 
 | `docs/images/lyrics-workspace.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original lyrics and generated test audio | MIT OR Apache-2.0 |
 | `docs/images/remix-workspace.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original generated test audio | MIT OR Apache-2.0 |

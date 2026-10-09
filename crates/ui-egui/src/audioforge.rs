@@ -75,6 +75,8 @@ pub struct VoiceState {
     alternate_playlist: u64,
     stem_generation: Value,
     remix_view: bool,
+    lyric_analysis: Value,
+    lyric_analysis_source: String,
 }
 fn preset_path() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
@@ -149,6 +151,8 @@ impl VoiceState {
             alternate_playlist: 1,
             stem_generation: Value::Null,
             remix_view: false,
+            lyric_analysis: Value::Null,
+            lyric_analysis_source: String::new(),
         }
     }
 }
@@ -306,6 +310,56 @@ impl VoiceState {
         self.separating = true;
         self.status = "Separating on CPU. First use downloads model weights.".into();
         Ok(())
+    }
+    fn analyze_lyrics(&mut self) -> Result<Value, String> {
+        if self.job.is_some() {
+            return Err("Wait for the current job".into());
+        }
+        if self.lyrics.trim().is_empty() || self.lyrics.chars().count() > 3000 {
+            return Err("Enter between 1 and 3000 lyric characters".into());
+        }
+        let python = std::env::var("SOUNDCRAFT_LYRIC_PYTHON")
+            .or_else(|_| std::env::var("SOUNDCRAFT_AUDIOFORGE_PYTHON"))
+            .map_err(|_| "Set SOUNDCRAFT_LYRIC_PYTHON to your Python executable")?;
+        let bridge = std::env::var("SOUNDCRAFT_LYRIC_ANALYZER").map_err(|_| "Set SOUNDCRAFT_LYRIC_ANALYZER")?;
+        let mut command = Command::new(python);
+        command.args(["-I", &bridge]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        let mut child = command.spawn().map_err(|error| error.to_string())?;
+        let payload = json!({"lyrics":self.lyrics}).to_string();
+        let write_result = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Cannot open lyric analysis input".to_string())
+            .and_then(|mut input| input.write_all(payload.as_bytes()).map_err(|_| "Cannot send lyrics to analyzer".to_string()));
+        if let Err(error) = write_result {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        let output = child.wait_with_output().map_err(|error| error.to_string())?;
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(output.stderr.get(..8192).unwrap_or(&output.stderr)).trim().to_string();
+            return Err(if error.is_empty() { "Lyric analysis failed".into() } else { error });
+        }
+        if output.stdout.len() > 256 * 1024 {
+            return Err("Lyric analysis output is too large".into());
+        }
+        let report: Value = serde_json::from_slice(&output.stdout).map_err(|_| "Lyric analyzer returned invalid JSON".to_string())?;
+        if report.get("schema").and_then(Value::as_u64) != Some(1)
+            || report.get("summary").and_then(Value::as_object).is_none()
+            || report.get("lines").and_then(Value::as_array).is_none()
+        {
+            return Err("Lyric analyzer returned an unsupported report".into());
+        }
+        self.lyric_analysis = report.clone();
+        self.lyric_analysis_source = self.lyrics.clone();
+        self.status = "Estimated lyric analysis updated.".into();
+        Ok(report)
     }
     fn poll(&mut self, ctx: &egui::Context) {
         let Some(job) = self.job.as_mut() else { return };
@@ -493,6 +547,42 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                     egui::ScrollArea::vertical().id_salt("lyric-editor-scroll").max_height(160.0).show(ui, |ui| {
                         ui.add(egui::TextEdit::multiline(&mut state.lyrics).desired_rows(5).desired_width(f32::INFINITY).char_limit(3000));
                     });
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(!busy, egui::Button::new("Analyze lyrics")).clicked() {
+                            workflow.push(("musicforge.lyrics_analyze", json!({})));
+                        }
+                        ui.label("Estimated syllables, rhyme, repetition and section balance");
+                    });
+                    if let Some(summary) = state.lyric_analysis.get("summary") {
+                        let lyric_lines = summary.get("lyric_lines").and_then(Value::as_u64).unwrap_or(0);
+                        let words = summary.get("words").and_then(Value::as_u64).unwrap_or(0);
+                        let average = summary.get("average_syllables").and_then(Value::as_f64).unwrap_or(0.0);
+                        let scheme = summary.get("rhyme_scheme").and_then(Value::as_str).unwrap_or("");
+                        ui.label(format!("{lyric_lines} lyric lines, {words} words, {average:.1} syllables/line, rhyme {scheme}"));
+                        if state.lyric_analysis_source != state.lyrics {
+                            ui.colored_label(egui::Color32::YELLOW, "Analysis is for an earlier draft. Run it again after editing.");
+                        }
+                        egui::CollapsingHeader::new("Line analysis").show(ui, |ui| {
+                            egui::ScrollArea::vertical().id_salt("lyric-analysis-scroll").max_height(180.0).show(ui, |ui| {
+                                if let Some(lines) = state.lyric_analysis.get("lines").and_then(Value::as_array) {
+                                    for line in lines.iter().take(120) {
+                                        let number = line.get("number").and_then(Value::as_u64).unwrap_or(0);
+                                        let syllables = line.get("syllables").and_then(Value::as_u64).unwrap_or(0);
+                                        let rhyme = line.get("rhyme").and_then(Value::as_str).unwrap_or("-");
+                                        let text = line.get("text").and_then(Value::as_str).unwrap_or("");
+                                        let flags = line
+                                            .get("flags")
+                                            .and_then(Value::as_array)
+                                            .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
+                                            .unwrap_or_default();
+                                        let suffix = if flags.is_empty() { String::new() } else { format!("  [{flags}]") };
+                                        ui.monospace(format!("L{number:02}  {syllables:>2} syl  {rhyme:<2}  {text}{suffix}"));
+                                    }
+                                }
+                            });
+                        });
+                        ui.small("English syllables and spelling-based rhymes are estimates. Confirm phrasing by listening.");
+                    }
                 }
                 ui.label("Use Generate Voice for spoken vocals on a separate track.");
                 ui.add(egui::Slider::new(&mut state.duration, 10.0..=60.0).text("Seconds"));
@@ -675,6 +765,7 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
     };
     for (command, params) in workflow {
         let status = match app.run(command, params) {
+            Ok(_) if command == "musicforge.lyrics_analyze" => "Estimated lyric analysis updated.".into(),
             Ok(value) => format!("Saved: {value}"),
             Err(error) => error,
         };
@@ -784,6 +875,22 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
                 },
             ))
         }
+        "lyrics_analyze" if music => {
+            if state.job.is_some() {
+                return Some(Err("Wait for the current job".into()));
+            }
+            if let Some(lyrics) = p.get("lyrics") {
+                let Some(lyrics) = lyrics.as_str() else {
+                    return Some(Err("lyrics must be text".into()));
+                };
+                if lyrics.trim().is_empty() || lyrics.chars().count() > 3000 {
+                    return Some(Err("Enter between 1 and 3000 lyric characters".into()));
+                }
+                state.lyrics = lyrics.into();
+                state.vocals = true;
+            }
+            Some(state.analyze_lyrics())
+        }
         "compare_mark" if music => {
             let slot = p.get("slot").and_then(Value::as_str).unwrap_or("");
             let take = state.take().cloned();
@@ -824,6 +931,7 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             "take":state.take().map(|t| json!({"path":t.path,"settings":t.settings,"name":t.name})),
             "takes":state.takes.iter().enumerate().map(|(i,t)| json!({"index":i,"name":t.name,"settings":t.settings})).collect::<Vec<_>>(),
             "presets":state.presets,"lyrics":state.lyrics,"lead_role":state.lead_role,"backing_role":state.backing_role,
+            "lyric_analysis":state.lyric_analysis,
             "stem_paths":state.stem_paths,"stem_generation":state.stem_generation,"separating":state.separating,
             "compare_a":state.compare_a.as_ref().map(|t| &t.name),"compare_b":state.compare_b.as_ref().map(|t| &t.name)}))),
         "take_select" => Some(

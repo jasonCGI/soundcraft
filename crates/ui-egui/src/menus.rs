@@ -27,6 +27,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
     ("musicforge.inspect", "Inspect Music Generation", "", None),
     ("musicforge.view", "Music Workspace Tab", "", None),
     ("musicforge.lyrics_load", "Load Lyric Version", "", None),
+    ("musicforge.lyrics_analyze", "Analyze Lyrics", "", None),
     ("musicforge.separate", "Separate Music Stems", "", None),
     ("musicforge.compare_mark", "Mark Comparison Take", "", None),
     ("musicforge.compare_audition", "Audition Comparison Take", "", None),
