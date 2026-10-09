@@ -2,7 +2,7 @@
 use super::*;
 use crate::cmd;
 use serde_json::json;
-use soundcraft_model::{LyricVersion, MarkerKind};
+use soundcraft_model::{LyricVersion, MarkerKind, SectionCandidate, TakeReview, VocalProfile};
 use std::io::Read;
 use std::path::Path;
 
@@ -10,6 +10,28 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!("lyrics.save_version", "Save Lyric Version", [], None, "{name,text,lead?,backing?}; up to 32 immutable revisions", always, save_lyrics),
         cmd!(query "lyrics.versions", "List Lyric Versions", [], None, "{}", always, |e, _| Ok(json!(e.session().lyric_versions))),
+        cmd!("remix.take_review", "Review Generated Take", [], None, "{name,rating:1..5,notes?,promoted?,dimension?,seed?}", always, take_review),
+        cmd!(query "remix.take_reviews", "List Take Reviews", [], None, "{}", always, |e, _| Ok(json!(e.session().take_reviews))),
+        cmd!(
+            "vocal.profile_save",
+            "Save Vocal Profile",
+            [],
+            None,
+            "{name,lead,backing,aggression:0..100,clarity:0..100,layers:1..8}",
+            always,
+            vocal_profile
+        ),
+        cmd!(query "vocal.profiles", "List Vocal Profiles", [], None, "{}", always, |e, _| Ok(json!(e.session().vocal_profiles))),
+        cmd!(
+            "remix.section_candidate",
+            "Save Section Candidate",
+            [],
+            None,
+            "{name,start,end,prompt,lyrics?,intensity:0..100,transition_ms:0..5000,vocal_profile?}",
+            always,
+            section_candidate
+        ),
+        cmd!(query "remix.section_candidates", "List Section Candidates", [], None, "{}", always, |e, _| Ok(json!(e.session().section_candidates))),
         cmd!(
             "remix.import_stems",
             "Import Aligned Stems",
@@ -47,6 +69,107 @@ fn save_lyrics(e: &mut Engine, p: &Value) -> Result<Value> {
     }
     e.session_mut().lyric_versions.push(LyricVersion { name, text, lead, backing });
     Ok(json!({"index":e.session().lyric_versions.len().saturating_sub(1)}))
+}
+fn take_review(e: &mut Engine, p: &Value) -> Result<Value> {
+    let take_name = limited(p, "name", 80)?;
+    let rating = p
+        .get("rating")
+        .and_then(Value::as_u64)
+        .filter(|value| (1..=5).contains(value))
+        .ok_or_else(|| bad("remix.take_review", "rating must be 1..5"))?;
+    let rating = u8::try_from(rating).map_err(|_| bad("remix.take_review", "rating must be 1..5"))?;
+    let notes = p.get("notes").and_then(Value::as_str).unwrap_or("");
+    if notes.chars().count() > 1000 {
+        return Err(bad("remix.take_review", "notes must fit within 1000 characters"));
+    }
+    let promoted = p.get("promoted").and_then(Value::as_bool).unwrap_or(false);
+    let dimension = p.get("dimension").and_then(Value::as_str).unwrap_or("custom");
+    if dimension.is_empty() || dimension.chars().count() > 40 {
+        return Err(bad("remix.take_review", "dimension must have 1..40 characters"));
+    }
+    let seed = p.get("seed").and_then(Value::as_u64).unwrap_or(0);
+    if seed > i32::MAX as u64 {
+        return Err(bad("remix.take_review", "seed must be a nonnegative 32-bit integer"));
+    }
+    if promoted {
+        for review in &mut e.session_mut().take_reviews {
+            review.promoted = false;
+        }
+    }
+    let review = TakeReview { take_name: take_name.clone(), rating, notes: notes.into(), promoted, dimension: dimension.into(), seed };
+    if let Some(existing) = e.session_mut().take_reviews.iter_mut().find(|item| item.take_name == take_name) {
+        *existing = review;
+    } else {
+        if e.session().take_reviews.len() >= 64 {
+            return Err(bad("remix.take_review", "Project already has 64 take reviews"));
+        }
+        e.session_mut().take_reviews.push(review);
+    }
+    Ok(json!({"name":take_name,"rating":rating,"promoted":promoted}))
+}
+fn vocal_profile(e: &mut Engine, p: &Value) -> Result<Value> {
+    let name = limited(p, "name", 60)?;
+    let lead = limited(p, "lead", 240)?;
+    let backing = limited(p, "backing", 240)?;
+    let aggression = bounded_u8(p, "aggression", 0, 100)?;
+    let clarity = bounded_u8(p, "clarity", 0, 100)?;
+    let layers = bounded_u8(p, "layers", 1, 8)?;
+    let profile = VocalProfile { name: name.clone(), lead, backing, aggression, clarity, layers };
+    if let Some(existing) = e.session_mut().vocal_profiles.iter_mut().find(|item| item.name == name) {
+        *existing = profile;
+    } else {
+        if e.session().vocal_profiles.len() >= 24 {
+            return Err(bad("vocal.profile_save", "Project already has 24 vocal profiles"));
+        }
+        e.session_mut().vocal_profiles.push(profile);
+    }
+    Ok(json!({"name":name}))
+}
+fn section_candidate(e: &mut Engine, p: &Value) -> Result<Value> {
+    if e.session().section_candidates.len() >= 64 {
+        return Err(bad("remix.section_candidate", "Project already has 64 section candidates"));
+    }
+    let name = limited(p, "name", 80)?;
+    let start = position_param(e, "remix.section_candidate", p, "start")?.ok_or_else(|| bad("remix.section_candidate", "start required"))?;
+    let end = position_param(e, "remix.section_candidate", p, "end")?.ok_or_else(|| bad("remix.section_candidate", "end required"))?;
+    if start < 0 || end <= start {
+        return Err(bad("remix.section_candidate", "Use a positive section range"));
+    }
+    let prompt = limited(p, "prompt", 1000)?;
+    let lyrics = p.get("lyrics").and_then(Value::as_str).unwrap_or("");
+    if lyrics.chars().count() > 3000 {
+        return Err(bad("remix.section_candidate", "lyrics must fit within 3000 characters"));
+    }
+    let intensity = bounded_u8(p, "intensity", 0, 100)?;
+    let transition_ms = p
+        .get("transition_ms")
+        .and_then(Value::as_u64)
+        .filter(|value| *value <= 5000)
+        .ok_or_else(|| bad("remix.section_candidate", "transition_ms must be 0..5000"))?;
+    let transition_ms = u32::try_from(transition_ms).map_err(|_| bad("remix.section_candidate", "transition_ms must be 0..5000"))?;
+    let vocal_profile = p.get("vocal_profile").and_then(Value::as_str).unwrap_or("");
+    if vocal_profile.chars().count() > 60 {
+        return Err(bad("remix.section_candidate", "vocal_profile must fit within 60 characters"));
+    }
+    e.session_mut().section_candidates.push(SectionCandidate {
+        name: name.clone(),
+        start,
+        end,
+        prompt,
+        lyrics: lyrics.into(),
+        intensity,
+        transition_ms,
+        vocal_profile: vocal_profile.into(),
+    });
+    Ok(json!({"index":e.session().section_candidates.len().saturating_sub(1),"name":name}))
+}
+fn bounded_u8(p: &Value, field: &str, min: u64, max: u64) -> Result<u8> {
+    let value = p
+        .get(field)
+        .and_then(Value::as_u64)
+        .filter(|value| (min..=max).contains(value))
+        .ok_or_else(|| bad("remix", format!("{field} must be {min}..{max}")))?;
+    u8::try_from(value).map_err(|_| bad("remix", format!("{field} must be {min}..{max}")))
 }
 fn import_stems(e: &mut Engine, p: &Value) -> Result<Value> {
     let stems = p
@@ -157,10 +280,75 @@ fn export_into(e: &Engine, dir: &Path, range: Range) -> Result<Value> {
     let stems_dir = dir.join("Stems");
     let files = crate::io::bounce_stems(&render, &stems_dir.to_string_lossy(), range, &opts)?;
     let relative: Vec<_> = files.iter().filter_map(|s| Path::new(s).strip_prefix(dir).ok().map(|p| p.to_string_lossy().replace('\\', "/"))).collect();
-    let manifest = json!({"schema":1,"name":e.session().name,"project":"project.scraft","mix":"mix.wav","stems":relative,
+    let vocal_track_ids: Vec<_> = e
+        .session()
+        .tracks
+        .iter()
+        .filter(|track| {
+            let name = track.name.to_ascii_lowercase();
+            name.contains("vocal") || name.contains("voice") || name.contains("singer")
+        })
+        .map(|track| track.id)
+        .collect();
+    let mut derived = serde_json::Map::new();
+    if !vocal_track_ids.is_empty() {
+        let mut instrumental = Engine::new(e.session().clone());
+        for track in &mut instrumental.session_mut().tracks {
+            if vocal_track_ids.contains(&track.id) {
+                track.mixer.mute = true;
+            }
+        }
+        let (audio, _) = crate::io::bounce_bytes(&instrumental, range, &opts, false)?;
+        std::fs::write(dir.join("instrumental.wav"), audio).map_err(|err| EngineError::Io(err.to_string()))?;
+        derived.insert("instrumental".into(), json!("instrumental.wav"));
+        let mut vocals = Engine::new(e.session().clone());
+        for track in &mut vocals.session_mut().tracks {
+            if !vocal_track_ids.contains(&track.id) {
+                track.mixer.mute = true;
+            }
+        }
+        let (audio, _) = crate::io::bounce_bytes(&vocals, range, &opts, false)?;
+        std::fs::write(dir.join("vocals.wav"), audio).map_err(|err| EngineError::Io(err.to_string()))?;
+        derived.insert("vocals".into(), json!("vocals.wav"));
+    }
+    let mut loops = Vec::new();
+    let section_markers: Vec<_> = e
+        .session()
+        .markers
+        .iter()
+        .filter(|marker| marker.kind == MarkerKind::Selection && marker.start >= range.start && marker.end <= range.end && marker.end > marker.start)
+        .collect();
+    if !section_markers.is_empty() {
+        let loops_dir = dir.join("Loops");
+        std::fs::create_dir(&loops_dir).map_err(|err| EngineError::Io(err.to_string()))?;
+        for marker in section_markers {
+            let filename = format!("{:03}-{}.wav", marker.number, crate::io::sanitize_name(&marker.name));
+            let (audio, _) = crate::io::bounce_bytes(e, Range::new(marker.start, marker.end), &opts, false)?;
+            std::fs::write(loops_dir.join(&filename), audio).map_err(|err| EngineError::Io(err.to_string()))?;
+            loops.push(json!({
+                "number":marker.number,
+                "name":marker.name,
+                "start_sample":marker.start,
+                "end_sample":marker.end,
+                "file":format!("Loops/{filename}")
+            }));
+        }
+    }
+    let mut bar_markers = Vec::new();
+    for bar in 1..=10_000_i64 {
+        let tick = e.session().tempo.bar_start_tick(bar);
+        let sample = e.session().tempo.tick_to_samples(tick, e.session().sample_rate);
+        if sample >= range.end {
+            break;
+        }
+        bar_markers.push(json!({"bar":bar,"sample":sample}));
+    }
+    let manifest = json!({"schema":2,"name":e.session().name,"project":"project.scraft","mix":"mix.wav","stems":relative,
         "sample_rate":e.session().sample_rate.hz(),"start_sample":0,"end_sample":range.end,
         "lyrics":e.session().lyric_versions,"tempo":e.session().tempo,"key_signatures":e.session().key_signatures,
         "markers":e.session().markers,"groups":e.session().groups,"sources":e.session().sources,
+        "take_reviews":e.session().take_reviews,"vocal_profiles":e.session().vocal_profiles,
+        "section_candidates":e.session().section_candidates,"bar_markers":bar_markers,"loops":loops,"derived":derived,
         "tracks":e.session().tracks.iter().map(|t| json!({"id":t.id,"name":t.name,"mixer":t.mixer})).collect::<Vec<_>>(),
         "stem_policy":"Rendered active unmuted tracks, aligned from sample zero; mixed generated songs remain mixed unless separated first"});
     let bytes = serde_json::to_vec_pretty(&manifest).map_err(|err| EngineError::Io(err.to_string()))?;
@@ -183,7 +371,38 @@ mod tests {
         assert!(e.session().lyric_versions.is_empty());
         let mut old = serde_json::to_value(e.session()).unwrap();
         old.as_object_mut().unwrap().remove("lyric_versions");
-        assert!(soundcraft_model::Session::from_json(&old.to_string()).unwrap().lyric_versions.is_empty());
+        old.as_object_mut().unwrap().remove("take_reviews");
+        old.as_object_mut().unwrap().remove("vocal_profiles");
+        old.as_object_mut().unwrap().remove("section_candidates");
+        let old = soundcraft_model::Session::from_json(&old.to_string()).unwrap();
+        assert!(old.lyric_versions.is_empty());
+        assert!(old.take_reviews.is_empty());
+        assert!(old.vocal_profiles.is_empty());
+        assert!(old.section_candidates.is_empty());
+    }
+    #[test]
+    fn reviews_profiles_and_candidates_roundtrip() {
+        let mut e = Engine::default();
+        e.execute("remix.take_review", &json!({"name":"Take A","rating":4,"notes":"Best chorus","dimension":"arrangement","seed":42})).unwrap();
+        e.execute("remix.take_review", &json!({"name":"Take B","rating":5,"promoted":true,"dimension":"vocal","seed":43})).unwrap();
+        e.execute(
+            "vocal.profile_save",
+            &json!({"name":"Lead and shout","lead":"clear female belt","backing":"low male responses","aggression":80,"clarity":70,"layers":3}),
+        )
+        .unwrap();
+        e.execute(
+            "remix.section_candidate",
+            &json!({"name":"Chorus B","start":0,"end":48000,"prompt":"larger guitars","lyrics":"[Chorus]\nGo","intensity":90,"transition_ms":250,"vocal_profile":"Lead and shout"}),
+        )
+        .unwrap();
+        assert_eq!(e.session().take_reviews.len(), 2);
+        assert!(e.session().take_reviews[1].promoted);
+        assert_eq!(e.session().vocal_profiles[0].layers, 3);
+        assert_eq!(e.session().section_candidates[0].transition_ms, 250);
+        let reopened = soundcraft_model::Session::from_json(&e.session().to_json().unwrap()).unwrap();
+        assert_eq!(reopened.take_reviews, e.session().take_reviews);
+        assert_eq!(reopened.vocal_profiles, e.session().vocal_profiles);
+        assert_eq!(reopened.section_candidates, e.session().section_candidates);
     }
     #[test]
     fn section_loop_and_invalid_range() {
@@ -225,6 +444,8 @@ mod tests {
             {"path":b,"name":"Guitar : lead","estimated":true}]}),
         )
         .unwrap();
+        e.session_mut().tracks[0].name = "Vocals".into();
+        e.execute("remix.section", &json!({"name":"Chorus","start":120,"end":2400})).unwrap();
         assert_eq!(e.session().tracks.len(), 2);
         for track in &e.session().tracks {
             assert_eq!(track.clips()[0].start, 120);
@@ -238,6 +459,11 @@ mod tests {
         assert_eq!(result["stems"], 2);
         assert!(e.execute("remix.export", &json!({"dir":dir})).is_err());
         let manifest: Value = serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+        assert!(dir.join("instrumental.wav").exists());
+        assert!(dir.join("vocals.wav").exists());
+        assert!(dir.join("Loops/001-Chorus.wav").exists());
+        assert!(!manifest["bar_markers"].as_array().unwrap().is_empty());
+        assert_eq!(manifest["loops"].as_array().unwrap().len(), 1);
         for path in manifest["stems"].as_array().unwrap() {
             let (_, audio) = soundcraft_audio_io::decode(&std::fs::read(dir.join(path.as_str().unwrap())).unwrap(), Some("wav")).unwrap();
             assert_eq!(audio.frames(), 4920);

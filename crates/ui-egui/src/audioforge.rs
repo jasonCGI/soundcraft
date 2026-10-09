@@ -24,6 +24,10 @@ struct Take {
     name: String,
     path: PathBuf,
     settings: Value,
+    rating: u8,
+    notes: String,
+    promoted: bool,
+    dimension: String,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Preset {
@@ -77,6 +81,21 @@ pub struct VoiceState {
     remix_view: bool,
     lyric_analysis: Value,
     lyric_analysis_source: String,
+    variant_dimension: String,
+    variant_count: u8,
+    variant_total: u8,
+    variant_index: u8,
+    variant_remaining: u8,
+    batch_active: bool,
+    blind_review: bool,
+    vocal_profile_name: String,
+    vocal_aggression: u8,
+    vocal_clarity: u8,
+    vocal_layers: u8,
+    candidate_prompt: String,
+    candidate_intensity: u8,
+    candidate_transition_ms: u32,
+    candidate_profile: String,
 }
 fn preset_path() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
@@ -153,6 +172,21 @@ impl VoiceState {
             remix_view: false,
             lyric_analysis: Value::Null,
             lyric_analysis_source: String::new(),
+            variant_dimension: "arrangement".into(),
+            variant_count: 3,
+            variant_total: 0,
+            variant_index: 0,
+            variant_remaining: 0,
+            batch_active: false,
+            blind_review: false,
+            vocal_profile_name: "Lead and backing".into(),
+            vocal_aggression: 70,
+            vocal_clarity: 75,
+            vocal_layers: 2,
+            candidate_prompt: "Keep the tempo and tonal center. Raise the section intensity with a stronger transition and a clearer hook.".into(),
+            candidate_intensity: 80,
+            candidate_transition_ms: 250,
+            candidate_profile: String::new(),
         }
     }
 }
@@ -177,7 +211,28 @@ impl VoiceState {
             let _ = job.wait();
         }
         self.separating = false;
+        self.batch_active = false;
+        self.variant_remaining = 0;
         self.status = "Cancelled. The provider may finish its current request.".into();
+    }
+    fn start_variants(&mut self) -> Result<(), String> {
+        let count = self.variant_count.clamp(2, 3);
+        if self.takes.len().saturating_add(usize::from(count)) > 8 {
+            return Err("Discard takes until the complete variant set fits within the eight-take limit".into());
+        }
+        if !matches!(self.variant_dimension.as_str(), "arrangement" | "vocal" | "mix") {
+            return Err("Use arrangement, vocal, or mix as the controlled dimension".into());
+        }
+        self.batch_active = true;
+        self.variant_total = count;
+        self.variant_index = 1;
+        self.variant_remaining = count.saturating_sub(1);
+        if let Err(error) = self.start() {
+            self.batch_active = false;
+            self.variant_remaining = 0;
+            return Err(error);
+        }
+        Ok(())
     }
     fn start(&mut self) -> Result<(), String> {
         if self.job.is_some() {
@@ -204,11 +259,20 @@ impl VoiceState {
         if self.music && self.vocals && (self.lyrics.trim().is_empty() || self.lyrics.chars().count() > 3000) {
             return Err("Enter between 1 and 3000 lyric characters for sung vocals".into());
         }
-        let resolved_prompt = if self.music && self.vocals {
-            format!("{} Lead vocal role: {}. Backing vocal role: {}.", self.text, self.lead_role, self.backing_role)
+        let mut resolved_prompt = if self.music && self.vocals {
+            format!(
+                "{} Lead vocal role: {}. Backing vocal role: {}. Vocal aggression {} of 100, clarity {} of 100, {} planned vocal layers.",
+                self.text, self.lead_role, self.backing_role, self.vocal_aggression, self.vocal_clarity, self.vocal_layers
+            )
         } else {
             self.text.clone()
         };
+        if self.music && self.batch_active {
+            resolved_prompt.push_str(&format!(
+                " Controlled {} variation {} of {}. Preserve the song, lyrics, tempo and all other production decisions.",
+                self.variant_dimension, self.variant_index, self.variant_total
+            ));
+        }
         if self.music && resolved_prompt.chars().count() > 2000 {
             return Err("Music prompt plus vocal roles must fit within 2000 characters".into());
         }
@@ -363,6 +427,7 @@ impl VoiceState {
     }
     fn poll(&mut self, ctx: &egui::Context) {
         let Some(job) = self.job.as_mut() else { return };
+        let mut continue_batch = false;
         match job.try_wait() {
             Ok(Some(exit)) => {
                 self.job = None;
@@ -381,6 +446,10 @@ impl VoiceState {
                             name: format!("{kind} take {}", self.next_take),
                             path: folder.join("take.wav"),
                             settings: self.pending.clone(),
+                            rating: 3,
+                            notes: String::new(),
+                            promoted: false,
+                            dimension: if self.batch_active { self.variant_dimension.clone() } else { "custom".into() },
                         });
                         self.next_take = self.next_take.saturating_add(1);
                         self.selected = self.takes.len().checked_sub(1);
@@ -392,8 +461,18 @@ impl VoiceState {
                         } else {
                             "Take ready. Audition before inserting.".into()
                         };
+                        if self.batch_active && self.variant_remaining > 0 {
+                            self.variant_remaining = self.variant_remaining.saturating_sub(1);
+                            self.variant_index = self.variant_index.saturating_add(1);
+                            self.seed = self.seed.saturating_add(1).min(i32::MAX as u64);
+                            continue_batch = true;
+                        } else {
+                            self.batch_active = false;
+                        }
                     } else {
                         self.separating = false;
+                        self.batch_active = false;
+                        self.variant_remaining = 0;
                         self.status = std::fs::read_to_string(folder.join("error.txt")).unwrap_or_else(|_| "Generation failed".into());
                     }
                 }
@@ -403,6 +482,11 @@ impl VoiceState {
                 self.cancel();
                 self.status = error.to_string();
             }
+        }
+        if continue_batch && let Err(error) = self.start() {
+            self.batch_active = false;
+            self.variant_remaining = 0;
+            self.status = format!("Variant set stopped: {error}");
         }
     }
     fn save_preset(&mut self, name: &str) -> Result<(), String> {
@@ -471,6 +555,7 @@ pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
 fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
     let versions = app.engine.session().lyric_versions.clone();
     let sections = app.engine.session().markers.clone();
+    let vocal_profiles = app.engine.session().vocal_profiles.clone();
     let mut workflow = Vec::new();
     let state = if music { &mut app.music } else { &mut app.voice };
     state.poll(ctx);
@@ -516,6 +601,36 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                         ui.horizontal(|ui| {
                             ui.label("Backing");
                             ui.add(egui::TextEdit::singleline(&mut state.backing_role).char_limit(120));
+                        });
+                        ui.collapsing("Vocal Director", |ui| {
+                            ui.add(egui::TextEdit::singleline(&mut state.vocal_profile_name).hint_text("Profile name").char_limit(60));
+                            ui.add(egui::Slider::new(&mut state.vocal_aggression, 0..=100).text("Aggression"));
+                            ui.add(egui::Slider::new(&mut state.vocal_clarity, 0..=100).text("Clarity"));
+                            ui.add(egui::Slider::new(&mut state.vocal_layers, 1..=8).text("Layers"));
+                            if ui.button("Save vocal profile in project").clicked() {
+                                workflow.push((
+                                    "vocal.profile_save",
+                                    json!({
+                                        "name":state.vocal_profile_name,
+                                        "lead":state.lead_role,
+                                        "backing":state.backing_role,
+                                        "aggression":state.vocal_aggression,
+                                        "clarity":state.vocal_clarity,
+                                        "layers":state.vocal_layers
+                                    }),
+                                ));
+                            }
+                            for profile in &vocal_profiles {
+                                if ui.button(format!("Apply {}", profile.name)).clicked() {
+                                    state.vocal_profile_name = profile.name.clone();
+                                    state.candidate_profile = profile.name.clone();
+                                    state.lead_role = profile.lead.clone();
+                                    state.backing_role = profile.backing.clone();
+                                    state.vocal_aggression = profile.aggression;
+                                    state.vocal_clarity = profile.clarity;
+                                    state.vocal_layers = profile.layers;
+                                }
+                            }
                         });
                         if ui.button("Save lyric version in project").clicked() {
                             workflow.push((
@@ -625,14 +740,38 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
             {
                 state.status = error;
             }
+            if music {
+                ui.separator();
+                ui.label("Take Lab");
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("variant-dimension")
+                        .selected_text(&state.variant_dimension)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.variant_dimension, "arrangement".into(), "Arrangement");
+                            ui.selectable_value(&mut state.variant_dimension, "vocal".into(), "Vocal delivery");
+                            ui.selectable_value(&mut state.variant_dimension, "mix".into(), "Mix density");
+                        });
+                    ui.add(egui::Slider::new(&mut state.variant_count, 2..=3).text("takes"));
+                    if ui.button("Generate controlled set").clicked()
+                        && let Err(error) = state.start_variants()
+                    {
+                        state.status = error;
+                    }
+                });
+                ui.small("Only the selected dimension and seed change across the queued set.");
+            }
         });
         if busy && ui.button("Cancel generation").clicked() {
             state.cancel();
         }
         ui.separator();
         ui.label(format!("Takes: {} / 8, kept until this app closes", state.takes.len()));
+        if music {
+            ui.checkbox(&mut state.blind_review, "Blind take names while rating");
+        }
         for (index, take) in state.takes.iter().enumerate() {
-            if ui.selectable_label(state.selected == Some(index), &take.name).clicked() {
+            let label = if music && state.blind_review { format!("Candidate {}", index.saturating_add(1)) } else { take.name.clone() };
+            if ui.selectable_label(state.selected == Some(index), label).clicked() {
                 state.selected = Some(index);
                 state.audition = None;
             }
@@ -654,6 +793,29 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                             && let Err(error) = state.audition_path(&comparison.path) { state.status = error; }
                     }
                 });
+                if let Some(index) = state.selected
+                    && let Some(selected) = state.takes.get_mut(index)
+                {
+                    ui.collapsing("Review selected take", |ui| {
+                        ui.add(egui::Slider::new(&mut selected.rating, 1..=5).text("Rating"));
+                        ui.add(egui::TextEdit::multiline(&mut selected.notes).hint_text("Listening notes").desired_rows(2).char_limit(1000));
+                        ui.checkbox(&mut selected.promoted, "Promote as project winner");
+                        ui.label(format!("Controlled dimension: {}", selected.dimension));
+                        if ui.button("Save review in project").clicked() {
+                            workflow.push((
+                                "remix.take_review",
+                                json!({
+                                    "name":selected.name,
+                                    "rating":selected.rating,
+                                    "notes":selected.notes,
+                                    "promoted":selected.promoted,
+                                    "dimension":selected.dimension,
+                                    "seed":selected.settings.get("seed").and_then(Value::as_u64).unwrap_or(0)
+                                }),
+                            ));
+                        }
+                    });
+                }
             }
             ui.horizontal(|ui| {
                 if ui.add_enabled(!busy && !playing && !recording, egui::Button::new("Audition")).clicked() {
@@ -729,6 +891,46 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                         workflow.push(("remix.loop_section", json!({"number":section.number})));
                     }
                 }
+                ui.collapsing("Section candidate generator", |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut state.candidate_prompt).desired_rows(3).char_limit(1000));
+                    ui.add(egui::Slider::new(&mut state.candidate_intensity, 0..=100).text("Intensity"));
+                    ui.add(egui::Slider::new(&mut state.candidate_transition_ms, 0..=5000).text("Transition ms"));
+                    if !vocal_profiles.is_empty() {
+                        egui::ComboBox::from_id_salt("candidate-vocal-profile")
+                            .selected_text(if state.candidate_profile.is_empty() { "No saved vocal profile" } else { &state.candidate_profile })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut state.candidate_profile, String::new(), "No saved vocal profile");
+                                for profile in &vocal_profiles {
+                                    ui.selectable_value(&mut state.candidate_profile, profile.name.clone(), &profile.name);
+                                }
+                            });
+                    }
+                    let candidate_params = json!({
+                        "name":state.section_name,
+                        "start":{"seconds":state.section_start},
+                        "end":{"seconds":state.section_end},
+                        "prompt":state.candidate_prompt,
+                        "lyrics":if state.vocals { state.lyrics.as_str() } else { "" },
+                        "intensity":state.candidate_intensity,
+                        "transition_ms":state.candidate_transition_ms,
+                        "vocal_profile":state.candidate_profile
+                    });
+                    if ui.button("Save section candidate request").clicked() {
+                        workflow.push(("remix.section_candidate", candidate_params.clone()));
+                    }
+                    if ui.add_enabled(!busy, egui::Button::new("Generate candidate take")).clicked() {
+                        workflow.push(("remix.section_candidate", candidate_params));
+                        state.text = format!(
+                            "{} Section replacement intensity {} of 100 with a {} ms transition. Preserve tempo, tonal center and surrounding arrangement.",
+                            state.candidate_prompt, state.candidate_intensity, state.candidate_transition_ms
+                        );
+                        state.duration = (state.section_end - state.section_start).clamp(10.0, 60.0);
+                        if let Err(error) = state.start() {
+                            state.status = error;
+                        }
+                    }
+                    ui.small("Generated candidates are separate takes. Insert one on an alternate playlist, align it, then promote only the marked range.");
+                });
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut state.layer_group).hint_text("Layer group name"));
                     if ui.button("Group selected tracks").clicked() {
@@ -794,6 +996,14 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
         id.split('.').nth(1)?
     } else {
         return None;
+    };
+    let requested_profile = if operation == "vocal_profile_apply" && music {
+        p.get("name")
+            .and_then(Value::as_str)
+            .and_then(|name| app.engine.session().vocal_profiles.iter().find(|profile| profile.name == name))
+            .cloned()
+    } else {
+        None
     };
     let state = if music { &mut app.music } else { &mut app.voice };
     match operation {
@@ -891,6 +1101,62 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             }
             Some(state.analyze_lyrics())
         }
+        "variants" if music => {
+            if let Some(dimension) = p.get("dimension").and_then(Value::as_str) {
+                if !matches!(dimension, "arrangement" | "vocal" | "mix") {
+                    return Some(Err("Use arrangement, vocal, or mix as the controlled dimension".into()));
+                }
+                state.variant_dimension = dimension.into();
+            }
+            if let Some(count) = p.get("count").and_then(Value::as_u64) {
+                if !(2..=3).contains(&count) {
+                    return Some(Err("Generate two or three controlled takes".into()));
+                }
+                state.variant_count = u8::try_from(count).unwrap_or(3);
+            }
+            Some(state.start_variants().map(|()| json!({"started":true,"count":state.variant_count,"dimension":state.variant_dimension})))
+        }
+        "vocal_profile_apply" if music => Some(requested_profile.ok_or_else(|| "Choose a saved vocal profile".to_string()).map(|profile| {
+            state.vocal_profile_name = profile.name.clone();
+            state.candidate_profile = profile.name;
+            state.lead_role = profile.lead;
+            state.backing_role = profile.backing;
+            state.vocal_aggression = profile.aggression;
+            state.vocal_clarity = profile.clarity;
+            state.vocal_layers = profile.layers;
+            state.vocals = true;
+            json!({"applied":state.vocal_profile_name})
+        })),
+        "section_generate" if music => {
+            if state.job.is_some() {
+                return Some(Err("Wait for the current job".into()));
+            }
+            let start = p.get("start_seconds").and_then(Value::as_f64).unwrap_or(state.section_start);
+            let end = p.get("end_seconds").and_then(Value::as_f64).unwrap_or(state.section_end);
+            if !start.is_finite() || !end.is_finite() || start < 0.0 || end <= start || end - start > 60.0 {
+                return Some(Err("Use a section between 0 and 60 seconds long".into()));
+            }
+            let prompt = p.get("prompt").and_then(Value::as_str).unwrap_or(&state.candidate_prompt).to_string();
+            if prompt.trim().is_empty() || prompt.chars().count() > 1000 {
+                return Some(Err("Use a section prompt of 1 to 1000 characters".into()));
+            }
+            let intensity = p.get("intensity").and_then(Value::as_u64).unwrap_or(u64::from(state.candidate_intensity));
+            let transition = p.get("transition_ms").and_then(Value::as_u64).unwrap_or(u64::from(state.candidate_transition_ms));
+            if intensity > 100 || transition > 5000 {
+                return Some(Err("Use intensity 0..100 and transition_ms 0..5000".into()));
+            }
+            state.section_start = start;
+            state.section_end = end;
+            state.candidate_prompt = prompt;
+            state.candidate_intensity = u8::try_from(intensity).unwrap_or(100);
+            state.candidate_transition_ms = u32::try_from(transition).unwrap_or(5000);
+            state.duration = (end - start).clamp(10.0, 60.0);
+            state.text = format!(
+                "{} Section replacement intensity {} of 100 with a {} ms transition. Preserve tempo, tonal center and surrounding arrangement.",
+                state.candidate_prompt, state.candidate_intensity, state.candidate_transition_ms
+            );
+            Some(state.start().map(|()| json!({"started":true,"duration":state.duration})))
+        }
         "compare_mark" if music => {
             let slot = p.get("slot").and_then(Value::as_str).unwrap_or("");
             let take = state.take().cloned();
@@ -928,9 +1194,10 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             Some(Ok(json!({"cancelled":true})))
         }
         "inspect" => Some(Ok(json!({"busy":state.job.is_some(),"status":state.status,
-            "take":state.take().map(|t| json!({"path":t.path,"settings":t.settings,"name":t.name})),
-            "takes":state.takes.iter().enumerate().map(|(i,t)| json!({"index":i,"name":t.name,"settings":t.settings})).collect::<Vec<_>>(),
+            "take":state.take().map(|t| json!({"path":t.path,"settings":t.settings,"name":t.name,"rating":t.rating,"notes":t.notes,"promoted":t.promoted,"dimension":t.dimension})),
+            "takes":state.takes.iter().enumerate().map(|(i,t)| json!({"index":i,"name":t.name,"settings":t.settings,"rating":t.rating,"notes":t.notes,"promoted":t.promoted,"dimension":t.dimension})).collect::<Vec<_>>(),
             "presets":state.presets,"lyrics":state.lyrics,"lead_role":state.lead_role,"backing_role":state.backing_role,
+            "variant_dimension":state.variant_dimension,"variant_count":state.variant_count,"batch_active":state.batch_active,
             "lyric_analysis":state.lyric_analysis,
             "stem_paths":state.stem_paths,"stem_generation":state.stem_generation,"separating":state.separating,
             "compare_a":state.compare_a.as_ref().map(|t| &t.name),"compare_b":state.compare_b.as_ref().map(|t| &t.name)}))),

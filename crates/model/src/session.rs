@@ -305,6 +305,15 @@ pub struct Session {
     /// Versioned lyrics and vocal roles saved with this project.
     #[serde(default)]
     pub lyric_versions: Vec<crate::LyricVersion>,
+    /// Ratings and notes for generated takes auditioned in this project.
+    #[serde(default)]
+    pub take_reviews: Vec<crate::TakeReview>,
+    /// Reusable vocal direction profiles for generated songs.
+    #[serde(default)]
+    pub vocal_profiles: Vec<crate::VocalProfile>,
+    /// Section replacement requests saved for review and regeneration.
+    #[serde(default)]
+    pub section_candidates: Vec<crate::SectionCandidate>,
     /// Original MIDI performances keyed by clip id (Event › MIDI Operations › Restore/Flatten
     /// Performance). Independent of undo so a restore survives later edits.
     #[serde(default)]
@@ -343,6 +352,9 @@ impl Session {
             next_id: 1,
             comments: String::new(),
             lyric_versions: Vec::new(),
+            take_reviews: Vec::new(),
+            vocal_profiles: Vec::new(),
+            section_candidates: Vec::new(),
             midi_originals: std::collections::BTreeMap::new(),
             pool: SourcePool::default(),
         };
@@ -508,6 +520,33 @@ impl Session {
             version.text = version.text.chars().take(3000).collect();
             version.lead = version.lead.chars().take(120).collect();
             version.backing = version.backing.chars().take(120).collect();
+        }
+        self.take_reviews.truncate(64);
+        for review in &mut self.take_reviews {
+            review.take_name = review.take_name.chars().take(80).collect();
+            review.rating = review.rating.clamp(1, 5);
+            review.notes = review.notes.chars().take(1000).collect();
+            review.dimension = review.dimension.chars().take(40).collect();
+            review.seed = review.seed.min(i32::MAX as u64);
+        }
+        self.vocal_profiles.truncate(24);
+        for profile in &mut self.vocal_profiles {
+            profile.name = profile.name.chars().take(60).collect();
+            profile.lead = profile.lead.chars().take(240).collect();
+            profile.backing = profile.backing.chars().take(240).collect();
+            profile.aggression = profile.aggression.min(100);
+            profile.clarity = profile.clarity.min(100);
+            profile.layers = profile.layers.clamp(1, 8);
+        }
+        self.section_candidates.truncate(64);
+        self.section_candidates.retain(|candidate| candidate.start >= 0 && candidate.end > candidate.start);
+        for candidate in &mut self.section_candidates {
+            candidate.name = candidate.name.chars().take(80).collect();
+            candidate.prompt = candidate.prompt.chars().take(1000).collect();
+            candidate.lyrics = candidate.lyrics.chars().take(3000).collect();
+            candidate.intensity = candidate.intensity.min(100);
+            candidate.transition_ms = candidate.transition_ms.min(5000);
+            candidate.vocal_profile = candidate.vocal_profile.chars().take(60).collect();
         }
         let max_id = self
             .tracks

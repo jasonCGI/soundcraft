@@ -2,6 +2,8 @@
 
 Independent development fork of [SoundCraft](https://github.com/storytold/soundcraft) by the ArtCraft team, with local AudioForge speech and ACE-Step music generation.
 
+The [CardonaLab pipeline walkthrough](https://cardonalab.dev/soundcraft/) shows the controlled-take workflow, vocal direction, section candidates, remix handoff, interface captures and original listening examples.
+
 ## Generate Voice
 
 Enter a script, choose a voice preset or save your own, and generate a WAV take. Keep up to eight takes, compare their original settings, rename, audition, export, or insert at the playhead. Insertions are undoable. Saved sessions retain source text, voice, speed, and audio.
@@ -10,7 +12,7 @@ Enter a script, choose a voice preset or save your own, and generate a WAV take.
 
 Choose an editable genre preset, set duration, tempo and seed, and generate an instrumental. Enable Sung vocals and enter original English lyrics for a mixed song. Spoken TTS vocals can be arranged on a separate track. Source metadata retains prompt, genre, model configuration, lyrics, and generation settings.
 
-See the [songwriting assistant](docs/integrations/songwriting-assistant.md) for structured song briefs and offline lyric analysis. The [lyrics and remix workflow](docs/integrations/remix-workflow.md) covers versioned lyrics, estimated stem separation, arrangement sections, A/B auditions, and portable project export.
+See the [songwriting assistant](docs/integrations/songwriting-assistant.md) for structured song briefs and offline lyric analysis. The [song development workflow](docs/integrations/remix-workflow.md) covers controlled variant sets, blind review, vocal profiles, section candidates, estimated stem separation, arrangement sections, A/B auditions, and Remix Pack 2.0 export.
 
 See [setup, screenshots, verification, and limits](docs/integrations/audioforge.md). The voice and music API bridges use only the standard library. The optional stem bridge uses a separately installed TorchAudio runtime. Models run in separate local services; the app does not download or start them automatically.
 

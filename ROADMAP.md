@@ -24,6 +24,14 @@ Implemented: a project-local SoundCraft Songwriting agent skill for new songs, r
 
 The skill and twelve audio-integration tests pass, the Rust UI compiles, and the panel was rendered and visually checked. See the [songwriting assistant guide](docs/integrations/songwriting-assistant.md). Phonetic rhymes, stress-aware meter, suggestion ranking, melody-aware prosody, and lyric-to-audio timestamps remain future work.
 
+## Song development sprints (2026-10-09)
+
+Implemented: queued two- or three-take controlled variation sets for arrangement, vocal delivery or mix density; blind take labels; project-saved ratings, listening notes and one promoted winner; reusable Vocal Director profiles with lead, backing, aggression, clarity and layer settings; persistent section-candidate briefs with intensity and transition controls; and Remix Pack 2.0 exports.
+
+Remix Pack 2.0 adds bar positions, loop-ready renders for selection markers, workflow records, and vocal-only plus instrumental renders when tracks are identified by vocal, voice or singer in the track name. Section candidates generate a separate take for alignment on an alternate playlist before range promotion. They do not patch the source mix automatically.
+
+Verification covers session migration, bounded hostile inputs, workflow round trips, derived exports, loop alignment, the shared control commands, a native panel screenshot and the full repository gates. See the [song development workflow](docs/integrations/remix-workflow.md).
+
 ## Where we are (2026-10-07)
 
 | Measure | Value | How |
