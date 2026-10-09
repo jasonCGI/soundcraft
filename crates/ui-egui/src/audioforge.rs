@@ -57,6 +57,24 @@ pub struct VoiceState {
     preset_name: String,
     export_path: String,
     next_take: u64,
+    lyric_name: String,
+    lead_role: String,
+    backing_role: String,
+    remix_dir: String,
+    stem_paths: String,
+    section_name: String,
+    section_start: f64,
+    section_end: f64,
+    separating: bool,
+    compare_a: Option<Take>,
+    compare_b: Option<Take>,
+    excerpt_start: usize,
+    excerpt_end: usize,
+    layer_group: String,
+    layer_track: String,
+    alternate_playlist: u64,
+    stem_generation: Value,
+    remix_view: bool,
 }
 fn preset_path() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
@@ -113,6 +131,24 @@ impl VoiceState {
             preset_name: String::new(),
             export_path: String::new(),
             next_take: 1,
+            lyric_name: String::new(),
+            lead_role: "Female lead".into(),
+            backing_role: "Male backing shouts".into(),
+            remix_dir: String::new(),
+            stem_paths: String::new(),
+            section_name: "Chorus".into(),
+            section_start: 0.0,
+            section_end: 10.0,
+            separating: false,
+            compare_a: None,
+            compare_b: None,
+            excerpt_start: 1,
+            excerpt_end: 12,
+            layer_group: "Guitars".into(),
+            layer_track: String::new(),
+            alternate_playlist: 1,
+            stem_generation: Value::Null,
+            remix_view: false,
         }
     }
 }
@@ -136,6 +172,7 @@ impl VoiceState {
             let _ = job.kill();
             let _ = job.wait();
         }
+        self.separating = false;
         self.status = "Cancelled. The provider may finish its current request.".into();
     }
     fn start(&mut self) -> Result<(), String> {
@@ -163,10 +200,19 @@ impl VoiceState {
         if self.music && self.vocals && (self.lyrics.trim().is_empty() || self.lyrics.chars().count() > 3000) {
             return Err("Enter between 1 and 3000 lyric characters for sung vocals".into());
         }
+        let resolved_prompt = if self.music && self.vocals {
+            format!("{} Lead vocal role: {}. Backing vocal role: {}.", self.text, self.lead_role, self.backing_role)
+        } else {
+            self.text.clone()
+        };
+        if self.music && resolved_prompt.chars().count() > 2000 {
+            return Err("Music prompt plus vocal roles must fit within 2000 characters".into());
+        }
         let python = std::env::var("SOUNDCRAFT_AUDIOFORGE_PYTHON").map_err(|_| "Set SOUNDCRAFT_AUDIOFORGE_PYTHON to your Python executable")?;
         let bridge_var = if self.music { "SOUNDCRAFT_MUSIC_BRIDGE" } else { "SOUNDCRAFT_AUDIOFORGE_BRIDGE" };
         let bridge = std::env::var(bridge_var).map_err(|_| format!("Set {bridge_var} to the generation bridge"))?;
         self.audition = None;
+        self.separating = false;
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
         let folder = std::env::temp_dir().join(format!("soundcraft-take-{}-{stamp}", std::process::id()));
         std::fs::create_dir(&folder).map_err(|e| e.to_string())?;
@@ -187,7 +233,7 @@ impl VoiceState {
         }
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         let settings = if self.music {
-            json!({"input":self.text,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo","genre":self.genre,"lyrics":if self.vocals { self.lyrics.as_str() } else { "[Instrumental]" }})
+            json!({"input":resolved_prompt,"duration":self.duration,"bpm":self.bpm,"seed":self.seed,"model":"acestep-v15-turbo","genre":self.genre,"lyrics":if self.vocals { self.lyrics.as_str() } else { "[Instrumental]" }})
         } else {
             json!({"input":self.text,"voice":self.voice,"speed":self.speed})
         };
@@ -205,7 +251,60 @@ impl VoiceState {
         self.pending = settings;
         self.folder = Some(folder);
         self.job = Some(child);
-        self.status = if self.music { "Generating instrumental..." } else { "Generating voice..." }.into();
+        self.status = if self.music { "Generating music..." } else { "Generating voice..." }.into();
+        Ok(())
+    }
+    fn audition_path(&mut self, path: &std::path::Path) -> Result<(), String> {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let mut preview = Engine::default();
+        soundcraft_engine::io::import_audio_bytes(&mut preview, "Take.wav", &bytes, None, None, 0).map_err(|e| e.to_string())?;
+        let player = Player::new(preview.session_arc());
+        player.play(0, Some(preview.session().content_end()), None);
+        self.audition = Some(player);
+        Ok(())
+    }
+    fn archive(&self, folder: &std::path::Path) -> Result<PathBuf, String> {
+        let preferences = preset_path().ok_or("Cannot locate project archive")?;
+        let parent = preferences.parent().ok_or("Cannot locate project archive")?.join("Generations");
+        std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+        let name = folder.file_name().ok_or("Missing take folder")?;
+        let destination = parent.join(name);
+        std::fs::create_dir(&destination).map_err(|e| e.to_string())?;
+        std::fs::copy(folder.join("take.wav"), destination.join("original.wav")).map_err(|e| e.to_string())?;
+        let metadata = serde_json::to_vec_pretty(&self.pending).map_err(|e| e.to_string())?;
+        std::fs::write(destination.join("generation.json"), metadata).map_err(|e| e.to_string())?;
+        Ok(destination)
+    }
+    fn separate(&mut self) -> Result<(), String> {
+        if self.job.is_some() {
+            return Err("Wait for the current job".into());
+        }
+        let take = self.take().ok_or("Select a music take")?.clone();
+        let input = take.path;
+        self.stem_generation = json!({"provider":"ace-step-local","input":take.settings.get("input"),"voice":"","speed":1.0,
+            "music":{"model":take.settings.get("model"),"duration":take.settings.get("duration"),"bpm":take.settings.get("bpm"),
+            "seed":take.settings.get("seed"),"genre":take.settings.get("genre"),"lyrics":take.settings.get("lyrics")}});
+        let python = std::env::var("SOUNDCRAFT_STEM_PYTHON").map_err(|_| "Set SOUNDCRAFT_STEM_PYTHON to a TorchAudio Python runtime")?;
+        let bridge = std::env::var("SOUNDCRAFT_STEM_BRIDGE").map_err(|_| "Set SOUNDCRAFT_STEM_BRIDGE")?;
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+        let folder = std::env::temp_dir().join(format!("soundcraft-stems-{}-{stamp}", std::process::id()));
+        std::fs::create_dir(&folder).map_err(|e| e.to_string())?;
+        self.folders.push(folder.clone());
+        let error = std::fs::File::create(folder.join("error.txt")).map_err(|e| e.to_string())?;
+        self.job = Some(
+            Command::new(python)
+                .args(["-I", &bridge, "--input"])
+                .arg(input)
+                .arg("--out")
+                .arg(folder.join("stems"))
+                .stdout(Stdio::null())
+                .stderr(Stdio::from(error))
+                .spawn()
+                .map_err(|e| e.to_string())?,
+        );
+        self.folder = Some(folder);
+        self.separating = true;
+        self.status = "Separating on CPU. First use downloads model weights.".into();
         Ok(())
     }
     fn poll(&mut self, ctx: &egui::Context) {
@@ -214,7 +313,15 @@ impl VoiceState {
             Ok(Some(exit)) => {
                 self.job = None;
                 if let Some(folder) = &self.folder {
-                    if exit.success() {
+                    if exit.success() && self.separating {
+                        self.stem_paths = ["drums", "bass", "other", "vocals"]
+                            .iter()
+                            .map(|name| folder.join("stems").join(format!("{name}.wav")).to_string_lossy().into_owned())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        self.status = "Estimated stems ready. Import them below, then save or export your project.".into();
+                        self.separating = false;
+                    } else if exit.success() {
                         let kind = if self.music { "Music" } else { "Voice" };
                         self.takes.push(Take {
                             name: format!("{kind} take {}", self.next_take),
@@ -223,8 +330,16 @@ impl VoiceState {
                         });
                         self.next_take = self.next_take.saturating_add(1);
                         self.selected = self.takes.len().checked_sub(1);
-                        self.status = "Take ready. Audition before inserting.".into();
+                        self.status = if self.music {
+                            match self.archive(folder) {
+                                Ok(path) => format!("Take ready. Original and settings archived in {}", path.display()),
+                                Err(error) => format!("Take ready, but archive failed: {error}. Export before closing."),
+                            }
+                        } else {
+                            "Take ready. Audition before inserting.".into()
+                        };
                     } else {
+                        self.separating = false;
                         self.status = std::fs::read_to_string(folder.join("error.txt")).unwrap_or_else(|_| "Generation failed".into());
                     }
                 }
@@ -268,6 +383,12 @@ impl VoiceState {
         let index = self.selected.filter(|i| *i < self.takes.len()).ok_or("Select a take")?;
         self.audition = None;
         let take = self.takes.remove(index);
+        if self.compare_a.as_ref().is_some_and(|t| t.path == take.path) {
+            self.compare_a = None;
+        }
+        if self.compare_b.as_ref().is_some_and(|t| t.path == take.path) {
+            self.compare_b = None;
+        }
         let _ = std::fs::remove_file(take.path);
         self.selected = self.takes.len().checked_sub(1);
         Ok(())
@@ -280,6 +401,10 @@ impl Drop for VoiceState {
         for folder in &self.folders {
             let _ = std::fs::remove_file(folder.join("take.wav"));
             let _ = std::fs::remove_file(folder.join("error.txt"));
+            for name in ["drums.wav", "bass.wav", "other.wav", "vocals.wav", "stems.json"] {
+                let _ = std::fs::remove_file(folder.join("stems").join(name));
+            }
+            let _ = std::fs::remove_dir(folder.join("stems"));
             let _ = std::fs::remove_dir(folder);
         }
     }
@@ -290,6 +415,9 @@ pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
     show_panel(app, ctx, true);
 }
 fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
+    let versions = app.engine.session().lyric_versions.clone();
+    let sections = app.engine.session().markers.clone();
+    let mut workflow = Vec::new();
     let state = if music { &mut app.music } else { &mut app.voice };
     state.poll(ctx);
     if !state.open {
@@ -300,8 +428,16 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
     let playing = app.engine.transport.playing;
     let recording = app.engine.transport.recording;
     let title = if music { "Generate Music" } else { "Generate Voice" };
-    egui::Window::new(title).open(&mut open).default_width(500.0).show(ctx, |ui| {
+    egui::Window::new(title).open(&mut open).default_width(560.0).default_height(720.0).vscroll(true).show(ctx, |ui| {
         let busy = state.job.is_some();
+        if music {
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut state.remix_view, false, "Generate");
+                ui.selectable_value(&mut state.remix_view, true, "Remix");
+            });
+            ui.separator();
+        }
+        if !music || !state.remix_view {
         ui.add_enabled_ui(!busy, |ui| {
             ui.label(if music { "Local ACE-Step endpoint" } else { "Local AudioForge endpoint" });
             ui.text_edit_singleline(&mut state.endpoint);
@@ -317,8 +453,46 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                 });
                 ui.checkbox(&mut state.vocals, "Sung vocals (ACE-Step)");
                 if state.vocals {
+                    ui.collapsing("Lyric versions and vocal roles", |ui| {
+                        ui.add(egui::TextEdit::singleline(&mut state.lyric_name).hint_text("New revision name").char_limit(80));
+                        ui.horizontal(|ui| {
+                            ui.label("Lead");
+                            ui.add(egui::TextEdit::singleline(&mut state.lead_role).char_limit(120));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Backing");
+                            ui.add(egui::TextEdit::singleline(&mut state.backing_role).char_limit(120));
+                        });
+                        if ui.button("Save lyric version in project").clicked() {
+                            workflow.push((
+                                "lyrics.save_version",
+                                json!({"name":state.lyric_name,"text":state.lyrics,"lead":state.lead_role,"backing":state.backing_role}),
+                            ));
+                        }
+                        for version in &versions {
+                            if ui.button(format!("Load {}", version.name)).clicked() {
+                                state.lyrics = version.text.clone();
+                                state.lead_role = version.lead.clone();
+                                state.backing_role = version.backing.clone();
+                            }
+                        }
+                        ui.label("Use [Verse], [Chorus], and vocal-role tags. Save a new name for each revision.");
+                        ui.horizontal(|ui| {
+                            ui.label("Excerpt lines");
+                            ui.add(egui::DragValue::new(&mut state.excerpt_start).range(1..=3000));
+                            ui.add(egui::DragValue::new(&mut state.excerpt_end).range(1..=3000));
+                            if ui.button("Use excerpt").clicked() {
+                                if state.excerpt_end >= state.excerpt_start {
+                                    state.lyrics = state.lyrics.lines().skip(state.excerpt_start.saturating_sub(1))
+                                        .take(state.excerpt_end.saturating_sub(state.excerpt_start).saturating_add(1)).collect::<Vec<_>>().join("\n");
+                                } else { state.status = "End line must follow start line".into(); }
+                            }
+                        });
+                    });
                     ui.label("English lyrics, up to 3000 characters. Describe the singing voice in the music prompt.");
-                    ui.add(egui::TextEdit::multiline(&mut state.lyrics).desired_rows(5).desired_width(f32::INFINITY).char_limit(3000));
+                    egui::ScrollArea::vertical().id_salt("lyric-editor-scroll").max_height(160.0).show(ui, |ui| {
+                        ui.add(egui::TextEdit::multiline(&mut state.lyrics).desired_rows(5).desired_width(f32::INFINITY).char_limit(3000));
+                    });
                 }
                 ui.label("Use Generate Voice for spoken vocals on a separate track.");
                 ui.add(egui::Slider::new(&mut state.duration, 10.0..=60.0).text("Seconds"));
@@ -380,6 +554,17 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                 ui.add(egui::TextEdit::singleline(&mut selected.name).hint_text("Take name").char_limit(80));
             }
             ui.label(take.settings.to_string());
+            if music {
+                ui.horizontal(|ui| {
+                    if ui.button("Mark as A").clicked() { state.compare_a = Some(take.clone()); }
+                    if ui.button("Mark as B").clicked() { state.compare_b = Some(take.clone()); }
+                    for (label, comparison) in [("A", state.compare_a.clone()), ("B", state.compare_b.clone())] {
+                        if let Some(comparison) = comparison
+                            && ui.add_enabled(!playing && !recording, egui::Button::new(format!("Hear {label}: {}", comparison.name))).clicked()
+                            && let Err(error) = state.audition_path(&comparison.path) { state.status = error; }
+                    }
+                });
+            }
             ui.horizontal(|ui| {
                 if ui.add_enabled(!busy && !playing && !recording, egui::Button::new("Audition")).clicked() {
                     let result = std::fs::read(&take.path).map_err(|e| e.to_string()).and_then(|bytes| {
@@ -412,11 +597,90 @@ fn show_panel(app: &mut SoundApp, ctx: &egui::Context, music: bool) {
                 }
             });
         }
+        }
+        if music && state.remix_view {
+            egui::CollapsingHeader::new("Remix project").default_open(true).show(ui, |ui| {
+                if ui.add_enabled(!busy && state.take().is_some(), egui::Button::new("Separate selected take into 4 stems")).clicked()
+                    && let Err(error) = state.separate()
+                {
+                    state.status = error;
+                }
+                ui.label("Import aligned WAV stems, one absolute path per line. Separated stems may contain bleed.");
+                ui.add(egui::TextEdit::multiline(&mut state.stem_paths).desired_rows(4).desired_width(f32::INFINITY));
+                if ui.button("Import stems as estimated tracks").clicked() {
+                    let stems: Vec<_> = state
+                        .stem_paths
+                        .lines()
+                        .filter(|p| !p.trim().is_empty())
+                        .map(|p| {
+                            let path = p.trim();
+                            let name = std::path::Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("Stem");
+                            json!({"path":path,"name":name,"estimated":true})
+                        })
+                        .collect();
+                    workflow.push(("remix.import_stems", json!({"stems":stems,"generation":state.stem_generation})));
+                }
+                ui.separator();
+                ui.add(egui::TextEdit::singleline(&mut state.section_name).hint_text("Section name").char_limit(80));
+                ui.horizontal(|ui| {
+                    ui.label("Start seconds");
+                    ui.add(egui::DragValue::new(&mut state.section_start).range(0.0..=600.0));
+                    ui.label("End seconds");
+                    ui.add(egui::DragValue::new(&mut state.section_end).range(0.0..=600.0));
+                });
+                if ui.button("Add section").clicked() {
+                    workflow.push((
+                        "remix.section",
+                        json!({"name":state.section_name,"start":{"seconds":state.section_start},"end":{"seconds":state.section_end}}),
+                    ));
+                }
+                for section in &sections {
+                    if section.kind == soundcraft_model::MarkerKind::Selection && ui.button(format!("Loop {}", section.name)).clicked() {
+                        workflow.push(("remix.loop_section", json!({"number":section.number})));
+                    }
+                }
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut state.layer_group).hint_text("Layer group name"));
+                    if ui.button("Group selected tracks").clicked() {
+                        workflow.push(("track.group", json!({"name":state.layer_group,"edit":true,"mix":true})));
+                    }
+                });
+                ui.add(egui::TextEdit::singleline(&mut state.layer_track).hint_text("Track name for arrangement variants"));
+                ui.horizontal(|ui| {
+                    if ui.button("Duplicate active playlist").clicked() {
+                        workflow.push(("track.playlist_duplicate", json!({"track":state.layer_track})));
+                    }
+                    ui.label("Alternate playlist index");
+                    ui.add(egui::DragValue::new(&mut state.alternate_playlist).range(0..=128));
+                });
+                if ui.button("Replace section from alternate playlist").clicked() {
+                    workflow.push(("track.playlist_promote", json!({"track":state.layer_track,"playlist":state.alternate_playlist,
+                        "start":{"seconds":state.section_start},"end":{"seconds":state.section_end}})));
+                }
+                ui.label("Use the mixer for layer mute, solo, volume, pan and groups. Use alternate playlists to replace a section. Export includes active unmuted tracks.");
+                ui.add(egui::TextEdit::singleline(&mut state.remix_dir).hint_text("New export folder"));
+                if ui.button("Export project, mix and stems").clicked() {
+                    workflow.push(("remix.export", json!({"dir":state.remix_dir})));
+                }
+            });
+        }
         ui.label(&state.status);
     });
     state.open = open;
-    if insert && let Some(take) = state.take().cloned() {
+    let insert_take = if insert {
         state.audition = None;
+        state.take().cloned()
+    } else {
+        None
+    };
+    for (command, params) in workflow {
+        let status = match app.run(command, params) {
+            Ok(value) => format!("Saved: {value}"),
+            Err(error) => error,
+        };
+        app.music.status = status;
+    }
+    if let Some(take) = insert_take {
         let mut params = take.settings;
         params["path"] = json!(take.path);
         params["at"] = json!(app.position());
@@ -491,6 +755,67 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
             }
             Some(state.start().map(|()| json!({"started":true})))
         }
+        "view" if music => {
+            let tab = p.get("tab").and_then(Value::as_str).unwrap_or("");
+            Some(match tab {
+                "generate" => {
+                    state.remix_view = false;
+                    Ok(json!({"tab":tab}))
+                }
+                "remix" => {
+                    state.remix_view = true;
+                    Ok(json!({"tab":tab}))
+                }
+                _ => Err("Use tab generate or remix".into()),
+            })
+        }
+        "lyrics_load" if music => {
+            if state.job.is_some() {
+                return Some(Err("Wait for the current job".into()));
+            }
+            let index = p.get("index").and_then(Value::as_u64).and_then(|n| usize::try_from(n).ok());
+            Some(index.and_then(|i| app.engine.session().lyric_versions.get(i)).ok_or_else(|| "Choose a saved lyric version index".to_string()).map(
+                |version| {
+                    state.lyrics = version.text.clone();
+                    state.lead_role = version.lead.clone();
+                    state.backing_role = version.backing.clone();
+                    state.vocals = true;
+                    json!({"loaded":version.name})
+                },
+            ))
+        }
+        "compare_mark" if music => {
+            let slot = p.get("slot").and_then(Value::as_str).unwrap_or("");
+            let take = state.take().cloned();
+            Some(match (slot, take) {
+                ("A", Some(take)) => {
+                    state.compare_a = Some(take);
+                    Ok(json!({"slot":"A"}))
+                }
+                ("B", Some(take)) => {
+                    state.compare_b = Some(take);
+                    Ok(json!({"slot":"B"}))
+                }
+                _ => Err("Select a take and use slot A or B".into()),
+            })
+        }
+        "compare_audition" if music => {
+            if app.engine.transport.playing || app.engine.transport.recording {
+                return Some(Err("Stop transport before audition".into()));
+            }
+            let slot = p.get("slot").and_then(Value::as_str).unwrap_or("");
+            let take = match slot {
+                "A" => state.compare_a.clone(),
+                "B" => state.compare_b.clone(),
+                _ => None,
+            };
+            Some(
+                take.ok_or_else(|| "Mark comparison A or B first".to_string())
+                    .and_then(|t| state.audition_path(&t.path))
+                    .map(|()| json!({"playing":slot})),
+            )
+        }
+        "separate" if music => Some(state.separate().map(|()| json!({"started":true}))),
         "cancel" => {
             state.cancel();
             Some(Ok(json!({"cancelled":true})))
@@ -498,7 +823,9 @@ pub fn run(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, Stri
         "inspect" => Some(Ok(json!({"busy":state.job.is_some(),"status":state.status,
             "take":state.take().map(|t| json!({"path":t.path,"settings":t.settings,"name":t.name})),
             "takes":state.takes.iter().enumerate().map(|(i,t)| json!({"index":i,"name":t.name,"settings":t.settings})).collect::<Vec<_>>(),
-            "presets":state.presets}))),
+            "presets":state.presets,"lyrics":state.lyrics,"lead_role":state.lead_role,"backing_role":state.backing_role,
+            "stem_paths":state.stem_paths,"stem_generation":state.stem_generation,"separating":state.separating,
+            "compare_a":state.compare_a.as_ref().map(|t| &t.name),"compare_b":state.compare_b.as_ref().map(|t| &t.name)}))),
         "take_select" => Some(
             p.get("index")
                 .and_then(Value::as_u64)

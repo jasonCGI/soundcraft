@@ -302,6 +302,9 @@ pub struct Session {
     pub next_id: u64,
     #[serde(default)]
     pub comments: String,
+    /// Versioned lyrics and vocal roles saved with this project.
+    #[serde(default)]
+    pub lyric_versions: Vec<crate::LyricVersion>,
     /// Original MIDI performances keyed by clip id (Event › MIDI Operations › Restore/Flatten
     /// Performance). Independent of undo so a restore survives later edits.
     #[serde(default)]
@@ -339,6 +342,7 @@ impl Session {
             edit: EditState::default(),
             next_id: 1,
             comments: String::new(),
+            lyric_versions: Vec::new(),
             midi_originals: std::collections::BTreeMap::new(),
             pool: SourcePool::default(),
         };
@@ -498,6 +502,13 @@ impl Session {
 
     /// Repair invariants after loading untrusted data.
     pub fn sanitize(&mut self) {
+        self.lyric_versions.truncate(32);
+        for version in &mut self.lyric_versions {
+            version.name = version.name.chars().take(80).collect();
+            version.text = version.text.chars().take(3000).collect();
+            version.lead = version.lead.chars().take(120).collect();
+            version.backing = version.backing.chars().take(120).collect();
+        }
         let max_id = self
             .tracks
             .iter()

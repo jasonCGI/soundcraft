@@ -151,7 +151,7 @@ fn main() -> eframe::Result {
     let files: Vec<String> = args
         .iter()
         .enumerate()
-        .filter(|(i, a)| !a.starts_with("--") && !(i > &0 && args.get(i - 1).is_some_and(|p| p == "--control")))
+        .filter(|(i, a)| !(a.starts_with("--") || i > &0 && args.get(i - 1).is_some_and(|p| p == "--control")))
         .map(|(_, a)| a.clone())
         .collect();
 

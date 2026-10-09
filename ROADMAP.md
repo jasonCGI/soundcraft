@@ -12,6 +12,12 @@ Listening checks: Jason approved the emailed Kokoro sample and female alternativ
 
 Next: controlled melodic/aggressive variations, independent vocal/instrument stems, lyric alignment, and speech ducking. Generated songs currently import as a mixed take.
 
+## Lyrics and remix sprints (2026-10-09)
+
+Implemented: immutable session lyric revisions with vocal roles and excerpt selection; persistent original music archives; optional local four-part estimated stem separation; atomic aligned import; arrangement section loops; existing playlist/group workflows surfaced in the music panel; A/B take auditions; portable native project, mix, stems and manifest export. See [workflow and limits](docs/integrations/remix-workflow.md).
+
+Verified with workspace CI, Python bridge tests, a real 40-second separation, and a native generation-to-remix/export/reopen smoke test. See the [workflow guide](docs/integrations/remix-workflow.md) for screenshots and limits. Separate singers, individual guitars, sample-synchronized A/B switching, loudness matching and coordinated per-instrument generation remain future work.
+
 ## Where we are (2026-10-07)
 
 | Measure | Value | How |

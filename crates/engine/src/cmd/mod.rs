@@ -23,6 +23,7 @@ mod more_util;
 mod options;
 mod plugin_state;
 mod query;
+mod remix;
 mod setup_more;
 mod surround;
 mod track;
@@ -99,6 +100,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         let mut v = Vec::new();
         v.extend(file::specs());
         v.extend(audioforge::specs());
+        v.extend(remix::specs());
         v.extend(edit::specs());
         v.extend(edit_more::specs());
         v.extend(view::specs());
