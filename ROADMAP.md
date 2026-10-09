@@ -4,6 +4,34 @@ SoundCraft is a clean-room, pure-Rust digital audio workstation that aims at ful
 Avid Pro Tools, and then beyond it: faster, open, scriptable and agent-controllable. This file is
 the honest status: what works today, what is missing, and how far we are.
 
+## Cardona Pipeline Tools audio preview (2026-10-08)
+
+Completed: local AudioForge/Kokoro speech generation, original and saved custom voice presets, eight-take management, local ACE-Step instrumental and sung-vocal generation, editable genre presets, undoable insertion, and saved generation metadata including lyrics. The Windows build and full repository gates pass. Native tests passed presets, selection/rename/export/discard, real generation, undo, save/reopen, and mix export. Screenshots and setup are in [the integration guide](docs/integrations/audioforge.md).
+
+Listening checks: Jason approved the emailed Kokoro sample and female alternative post-hardcore demo. Native speaker audition playback still needs a separate check.
+
+Next: controlled melodic/aggressive variations, independent vocal/instrument stems, lyric alignment, and speech ducking. Generated songs currently import as a mixed take.
+
+## Lyrics and remix sprints (2026-10-09)
+
+Implemented: immutable session lyric revisions with vocal roles and excerpt selection; persistent original music archives; optional local four-part estimated stem separation; atomic aligned import; arrangement section loops; existing playlist/group workflows surfaced in the music panel; A/B take auditions; portable native project, mix, stems and manifest export. See [workflow and limits](docs/integrations/remix-workflow.md).
+
+Verified with workspace CI, Python bridge tests, a real 40-second separation, and a native generation-to-remix/export/reopen smoke test. See the [workflow guide](docs/integrations/remix-workflow.md) for screenshots and limits. Separate singers, individual guitars, sample-synchronized A/B switching, loudness matching and coordinated per-instrument generation remain future work.
+
+## Songwriting assistant (2026-10-09)
+
+Implemented: a project-local SoundCraft Songwriting agent skill for new songs, revisions, audits and generator packages; an original dependency-free lyric analyzer; and a native Analyze Lyrics control shared by the UI and control channel. Reports identify sections and vocal cues, estimate English syllables and spelling-based rhyme groups, flag line-length outliers, and surface exact repeated lines. Edited lyrics visibly mark the previous report as stale.
+
+The skill and twelve audio-integration tests pass, the Rust UI compiles, and the panel was rendered and visually checked. See the [songwriting assistant guide](docs/integrations/songwriting-assistant.md). Phonetic rhymes, stress-aware meter, suggestion ranking, melody-aware prosody, and lyric-to-audio timestamps remain future work.
+
+## Song development sprints (2026-10-09)
+
+Implemented: queued two- or three-take controlled variation sets for arrangement, vocal delivery or mix density; blind take labels; project-saved ratings, listening notes and one promoted winner; reusable Vocal Director profiles with lead, backing, aggression, clarity and layer settings; persistent section-candidate briefs with intensity and transition controls; and Remix Pack 2.0 exports.
+
+Remix Pack 2.0 adds bar positions, loop-ready renders for selection markers, workflow records, and vocal-only plus instrumental renders when tracks are identified by vocal, voice or singer in the track name. Section candidates generate a separate take for alignment on an alternate playlist before range promotion. They do not patch the source mix automatically.
+
+Verification covers session migration, bounded hostile inputs, workflow round trips, derived exports, loop alignment, the shared control commands, a native panel screenshot and the full repository gates. See the [song development workflow](docs/integrations/remix-workflow.md).
+
 ## Where we are (2026-10-07)
 
 | Measure | Value | How |

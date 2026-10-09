@@ -44,3 +44,15 @@ and, at runtime, the operating system's own UI fonts when available (never redis
 | `assets/app-icon/soundcraft.ico` | SoundCraft contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
 | `assets/app-icon/hicolor/` | SoundCraft contributors | original, rendered from `icon.svg` (16–512 px PNGs and the scalable SVG) | MIT OR Apache-2.0 |
 | `docs/images/` | SoundCraft contributors | screenshots of SoundCraft rendered from the synthesised demo session | MIT OR Apache-2.0 |
+
+The screenshot docs/images/audioforge-voice.png shows the Cardona Pipeline Tools fork UI with a generated local test take. Screenshot by Jason Cardona, distributed under the repository's MIT/Apache-2.0 terms.
+
+| Path | Author | Source | License |
+|---|---|---|---|
+| `docs/images/audioforge-voice.png` | Jason Cardona | Screenshot of this fork with an original local test script | MIT OR Apache-2.0 |
+| `docs/images/audioforge-music.png` | Jason Cardona | Screenshot of this fork with original generated test audio | MIT OR Apache-2.0 |
+| `docs/images/audioforge-singing.png` | Jason Cardona | Screenshot of this fork with original lyrics and generated test audio | MIT OR Apache-2.0 |
+| `docs/images/songwriting-assistant.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original test lyrics and synthesised demo session | MIT OR Apache-2.0 |
+
+| `docs/images/lyrics-workspace.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original lyrics and generated test audio | MIT OR Apache-2.0 |
+| `docs/images/remix-workspace.png` | Cardona Pipeline Tools | Locally rendered SoundCraft fork with original generated test audio | MIT OR Apache-2.0 |

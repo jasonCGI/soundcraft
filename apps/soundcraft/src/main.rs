@@ -28,7 +28,7 @@ impl eframe::App for App {
         if self.0.quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        let title = format!("{} — SoundCraft", self.0.engine.session().name);
+        let title = format!("{}: Cardona Pipeline Tools SoundCraft Preview", self.0.engine.session().name);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -59,14 +59,14 @@ fn open_path(app: &mut SoundApp, p: &str) {
 
 fn prefs_path() -> Option<std::path::PathBuf> {
     let base = if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support/SoundCraft"))
+        std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support/Cardona Pipeline Tools/SoundCraft Preview"))
     } else if cfg!(windows) {
-        std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join("SoundCraft"))
+        std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join("Cardona Pipeline Tools").join("SoundCraft Preview"))
     } else {
         std::env::var_os("XDG_CONFIG_HOME")
             .map(std::path::PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
-            .map(|c| c.join("soundcraft"))
+            .map(|c| c.join("cardona-pipeline-tools").join("soundcraft-preview"))
     };
     base.map(|b| b.join("ui.json"))
 }
@@ -151,25 +151,25 @@ fn main() -> eframe::Result {
     let files: Vec<String> = args
         .iter()
         .enumerate()
-        .filter(|(i, a)| !a.starts_with("--") && !(i > &0 && args.get(i - 1).is_some_and(|p| p == "--control")))
+        .filter(|(i, a)| !(a.starts_with("--") || i > &0 && args.get(i - 1).is_some_and(|p| p == "--control")))
         .map(|(_, a)| a.clone())
         .collect();
 
     let engine = if demo { soundcraft_engine::demo::demo_engine() } else { Engine::default() };
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("SoundCraft")
+            .with_title("Cardona Pipeline Tools SoundCraft Preview")
             .with_inner_size([1600.0, 1000.0])
             .with_min_inner_size([960.0, 600.0])
             .with_drag_and_drop(true)
-            .with_app_id("ai.storyteller.soundcraft"),
+            .with_app_id("dev.cardonalab.soundcraft-preview"),
         ..Default::default()
     };
     if let Some(icon) = app_icon() {
         options.viewport = options.viewport.with_icon(icon);
     }
     eframe::run_native(
-        "SoundCraft",
+        "Cardona Pipeline Tools SoundCraft Preview",
         options,
         Box::new(move |cc| {
             let player = if no_audio { None } else { Some(soundcraft_playback::Player::new(Arc::new(engine.session().clone()))) };

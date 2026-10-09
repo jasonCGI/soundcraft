@@ -282,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_real_library_without_the_vst3_export_is_rejected() {
         // A system library loads fine but has no `GetPluginFactory`.
         // (macOS system libraries live only in the dyld shared cache, not as files.)

@@ -7,6 +7,7 @@ use soundcraft_time::{Range, Samples};
 use std::sync::OnceLock;
 
 mod audio_midi;
+mod audioforge;
 mod audiosuite;
 mod clap;
 mod clip;
@@ -22,6 +23,7 @@ mod more_util;
 mod options;
 mod plugin_state;
 mod query;
+mod remix;
 mod setup_more;
 mod surround;
 mod track;
@@ -97,6 +99,8 @@ pub fn command_specs() -> &'static [CommandSpec] {
     SPECS.get_or_init(|| {
         let mut v = Vec::new();
         v.extend(file::specs());
+        v.extend(audioforge::specs());
+        v.extend(remix::specs());
         v.extend(edit::specs());
         v.extend(edit_more::specs());
         v.extend(view::specs());

@@ -4,6 +4,8 @@
 //! executing commands. It can be replaced without touching anything below it.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod audioforge;
 pub mod control;
 pub mod credits;
 pub mod dialogs;
@@ -187,6 +189,10 @@ pub enum Gesture {
 }
 
 pub struct SoundApp {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub voice: audioforge::VoiceState,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub music: audioforge::VoiceState,
     pub engine: Engine,
     pub player: Option<Player>,
     /// Input capture, opened on first record.
@@ -235,6 +241,10 @@ pub struct SoundApp {
 impl SoundApp {
     pub fn new(engine: Engine, player: Option<Player>, services: Services) -> Self {
         SoundApp {
+            #[cfg(not(target_arch = "wasm32"))]
+            voice: audioforge::VoiceState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            music: audioforge::VoiceState::music(),
             engine,
             player,
             recorder: None,
@@ -780,6 +790,8 @@ impl SoundApp {
         score_editor::show(self, &ctx);
         palette::show(self, &ctx);
         dialogs::show(self, &ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        audioforge::show(self, &ctx);
     }
 
     /// UI state as JSON (control channel `ui.inspect`).

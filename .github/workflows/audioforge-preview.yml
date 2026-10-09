@@ -1,0 +1,62 @@
+name: AudioForge preview
+on:
+  push:
+    branches: [codex/audioforge-tts]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: soundcraft-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            soundcraft-windows-${{ hashFiles('Cargo.lock') }}-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bridge tests
+        run: python -m unittest discover -s integrations/audioforge -v
+      - name: Check source formatting
+        run: cargo fmt --all --check
+      - name: Build native preview
+        id: native
+        run: cargo build -p soundcraft -p soundcraft-cli
+      - name: Repository checks
+        run: cargo xtask ci
+      - name: Capture Generate Voice panel
+        if: always() && steps.native.outcome == 'success'
+        run: |
+          Set-Content -Path voice-shot.jsonl -Value '{"method":"engine.execute","params":{"command":"window.generate_voice","params":{"value":true}}}'
+          cargo run -p soundcraft-ui-egui --example ui_shot -- voice-panel.png voice-shot.jsonl
+          if (-not (Test-Path voice-panel.png)) { throw "Generate Voice render failed" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audioforge-preview
+          path: |
+            voice-panel.png
+            target/debug/soundcraft.exe
+            target/debug/soundcraft-cli.exe
+            integrations/audioforge/bridge.py
+            integrations/audioforge/music_bridge.py
+      - uses: actions/cache/save@v4
+        if: always() && !cancelled()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: soundcraft-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}

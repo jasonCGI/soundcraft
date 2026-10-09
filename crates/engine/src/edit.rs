@@ -411,6 +411,7 @@ mod tests {
         let mut s = Session::default();
         let t = s.add_track(TrackKind::Audio, ChannelFormat::Mono, None);
         s.sources.push(Source {
+            generation: None,
             id: SourceId(500),
             name: "src".into(),
             path: "src.wav".into(),

@@ -7,6 +7,34 @@ use soundcraft_engine::catalog;
 
 /// UI-layer commands: (id, label, catalog path or "", shortcut).
 pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
+    ("window.generate_voice", "Generate Voice", "", None),
+    ("audioforge.generate", "Generate Voice Take", "", None),
+    ("audioforge.cancel", "Cancel Voice Generation", "", None),
+    ("audioforge.inspect", "Inspect Voice Generation", "", None),
+    ("window.generate_music", "Generate Music", "", None),
+    ("audioforge.take_select", "Take Select", "", None),
+    ("audioforge.take_rename", "Take Rename", "", None),
+    ("audioforge.take_export", "Take Export", "", None),
+    ("audioforge.take_discard", "Take Discard", "", None),
+    ("musicforge.take_select", "Take Select", "", None),
+    ("musicforge.take_rename", "Take Rename", "", None),
+    ("musicforge.take_export", "Take Export", "", None),
+    ("musicforge.take_discard", "Take Discard", "", None),
+    ("audioforge.preset_save", "Save Voice Preset", "", None),
+    ("audioforge.preset_apply", "Apply Voice Preset", "", None),
+    ("musicforge.preset_apply", "Apply Music Genre", "", None),
+    ("musicforge.generate", "Generate Music Take", "", None),
+    ("musicforge.inspect", "Inspect Music Generation", "", None),
+    ("musicforge.view", "Music Workspace Tab", "", None),
+    ("musicforge.lyrics_load", "Load Lyric Version", "", None),
+    ("musicforge.lyrics_analyze", "Analyze Lyrics", "", None),
+    ("musicforge.variants", "Generate Controlled Variants", "", None),
+    ("musicforge.vocal_profile_apply", "Apply Vocal Profile", "", None),
+    ("musicforge.section_generate", "Generate Section Candidate", "", None),
+    ("musicforge.separate", "Separate Music Stems", "", None),
+    ("musicforge.compare_mark", "Mark Comparison Take", "", None),
+    ("musicforge.compare_audition", "Audition Comparison Take", "", None),
+    ("musicforge.cancel", "Cancel Music Generation", "", None),
     ("window.mix", "Mix", "Window > Mix", Some("Cmd+=")),
     ("window.edit", "Edit", "Window > Edit", Some("Cmd+=")),
     ("window.toggle_mix_edit", "Toggle Mix/Edit", "", Some("Cmd+=")),
@@ -197,6 +225,14 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                         let _ = app.run("app.quit", json!({}));
                     }
                 });
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Generate Music").clicked() {
+                    let _ = app.run("window.generate_music", json!({}));
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("Generate Voice").clicked() {
+                    let _ = app.run("window.generate_voice", json!({}));
+                }
                 let extra = ui_aliases();
                 for root in tree() {
                     ui.menu_button(&root.label, |ui| {
@@ -382,6 +418,10 @@ fn wants_dialog(id: &str) -> bool {
 
 /// Handle UI-layer commands. Returns None when `id` is not a UI command.
 pub fn run_ui_command(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, String>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(result) = crate::audioforge::run(app, id, p) {
+        return Some(result);
+    }
     if let Some(v) = crate::extra_windows::run(app, id, p) {
         return Some(Ok(v));
     }
