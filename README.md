@@ -1,19 +1,23 @@
-# Cardona Pipeline Tools: SoundCraft voice preview
+# Cardona Pipeline Tools: SoundCraft audio preview
 
-Development fork of [SoundCraft](https://github.com/storytold/soundcraft) by the ArtCraft team. This preview adds local AudioForge text-to-speech generation to the native Rust audio editor. It is an independent modified version.
+Independent development fork of [SoundCraft](https://github.com/storytold/soundcraft) by the ArtCraft team, with local AudioForge speech and ACE-Step music generation.
 
 ## Generate Voice
 
-Enter a script and voice ID, generate a WAV take through a local AudioForge-compatible service, audition it, then insert it at the playhead. Insertions use the normal undo boundary. Source text, voice and speed are saved with the audio source.
+Enter a script, choose a voice preset or save your own, and generate a WAV take. Keep up to eight takes, compare their original settings, rename, audition, export, or insert at the playhead. Insertions are undoable. Saved sessions retain source text, voice, speed, and audio.
 
-See [setup and current limits](docs/integrations/audioforge.md). The small Python bridge uses only the standard library. The TTS model runs outside SoundCraft's realtime audio engine. No model is automatically downloaded or started.
+## Generate Music
+
+Choose an editable genre preset, set duration, tempo and seed, and generate an instrumental. Enable Sung vocals and enter original English lyrics for a mixed song. Spoken TTS vocals can be arranged on a separate track. Source metadata retains prompt, genre, model configuration, lyrics, and generation settings.
+
+See [setup, screenshots, verification, and limits](docs/integrations/audioforge.md). Both Python bridges use only the standard library. Models run in separate local services; the app does not download or start them automatically.
 
 ## Development
 
-The upstream Rust workspace and command architecture remain intact. Run `cargo xtask ci` for repository checks. The AudioForge preview workflow builds and checks the Windows version. Native verification is in progress; this is not a production release.
+The Windows preview build and complete repository gates passed at a1982fb. Native tests passed presets, take management, real speech/music/singing generation, undo, save/reopen, metadata persistence, and mix export. This remains a development preview. Native speaker audition playback and independent vocal stems remain unverified or unimplemented.
 
-The next preview adds voice presets, take selection/rename/export/discard, and a local ACE-Step adapter with genre presets and optional sung vocals. Its build and native verification are in progress. Sentence-level regeneration remains planned.
+Run `cargo xtask ci` for repository checks and `python -m unittest discover -s integrations/audioforge -v` for bridge tests. The local music adapter follows the [official ACE-Step API](https://ace-step.github.io/ACE-Step-1.5/en/API).
 
 ## Attribution and licenses
 
-Based on SoundCraft by the ArtCraft team and its contributors. Code remains licensed under MIT or Apache-2.0. See LICENSE-MIT, LICENSE-APACHE, NOTICE and ATTRIBUTION.md for the applicable notices. ArtCraft trademark artwork has been removed from this modified fork; its license text is retained in docs/brand/LICENSE-brand.txt.
+Based on SoundCraft by the ArtCraft team and its contributors. Code remains MIT or Apache-2.0. See LICENSE-MIT, LICENSE-APACHE, NOTICE and ATTRIBUTION.md. ArtCraft trademark artwork was removed from this modified fork; its license text is retained in docs/brand/LICENSE-brand.txt. ACE-Step is a separately installed MIT-licensed engine.

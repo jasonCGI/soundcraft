@@ -46,3 +46,9 @@ and, at runtime, the operating system's own UI fonts when available (never redis
 | `docs/images/` | SoundCraft contributors | screenshots of SoundCraft rendered from the synthesised demo session | MIT OR Apache-2.0 |
 
 The screenshot docs/images/audioforge-voice.png shows the Cardona Pipeline Tools fork UI with a generated local test take. Screenshot by Jason Cardona, distributed under the repository's MIT/Apache-2.0 terms.
+
+| Path | Author | Source | License |
+|---|---|---|---|
+| `docs/images/audioforge-voice.png` | Jason Cardona | Screenshot of this fork with an original local test script | MIT OR Apache-2.0 |
+| `docs/images/audioforge-music.png` | Jason Cardona | Screenshot of this fork with original generated test audio | MIT OR Apache-2.0 |
+| `docs/images/audioforge-singing.png` | Jason Cardona | Screenshot of this fork with original lyrics and generated test audio | MIT OR Apache-2.0 |

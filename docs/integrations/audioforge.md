@@ -26,13 +26,17 @@ Native desktop only. The next preview includes three original voice-setting pres
 
 ## Verification
 
-Windows CI passed the native app build and complete `cargo xtask ci` gates, including formatting, strict workspace Clippy, workspace tests, asset and layer checks, and WASM checks. Three bridge tests and three engine regression tests cover input rejection, speech requests, insertion, undo, metadata round trips, and separate saved takes.
+The Windows build at a1982fb passed the native app build and complete `cargo xtask ci` gates: formatting, strict workspace Clippy, workspace tests, assets, architecture layers, and WASM. Six Python tests cover speech and asynchronous music contracts, invalid inputs, failure states, timeouts, cross-origin rejection, WAV conversion, malformed samples, and no-overwrite exports. Four engine regression tests cover voice and music insertion, undo, metadata round trips, and distinct saved take files.
 
-The real local Kokoro endpoint produced an 8.45-second mono WAV at 24 kHz through the bridge. The official v0.3.0 CLI also passed import, save/reopen, and bounce checks. The built Windows preview passed real TTS through its native control channel, insertion, undo, metadata save, reopen, mix export, and screenshot capture. The screenshot was visually checked. Jason listened to the emailed Kokoro sample and approved its sound on 2026-10-08. Native audition playback has not yet been separately verified.
+The native Windows smoke test passed voice preset application, custom preset save and reload, two takes with immutable settings, selection and rename, export without overwrite, discard, real music and singing generation, genre and lyric persistence, undo, save/reopen, and mix export. All three panels were captured and visually checked. Five local music demos were emailed, including original sung acoustic pop and a requested female alternative post-hardcore demo. Jason approved the Kokoro voice sample and the shoutcore demo by listening. Native speaker audition playback has not been separately verified.
 
-![Generate Voice panel with an inserted take](../images/audioforge-voice.png)
+![Voice presets and takes](../images/audioforge-voice.png)
 
-## Instrumental music preview
+![Music genres and instrumental take](../images/audioforge-music.png)
+
+![Sung vocals and lyrics](../images/audioforge-singing.png)
+
+## Music and singing preview
 
 The music panel targets the official ACE-Step 1.5 local API at http://127.0.0.1:8001. Set SOUNDCRAFT_MUSIC_BRIDGE to the absolute path of integrations/audioforge/music_bridge.py, and optionally SOUNDCRAFT_MUSIC_ENDPOINT. The Python executable setting is shared with the voice bridge. Install and start ACE-Step separately using its [official setup](https://github.com/ACE-Step/ACE-Step-1.5).
 
